@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="A kanban todo board that keeps your tasks in this browser only." />
+    <title>Todo board</title>
+    <style>
+      /* Shown only when the app script cannot start; the app replaces it as soon as it runs. */
+      .boot-note {
+        max-width: 36rem;
+        margin: 15vh auto;
+        padding: 0 16px;
+        font:
+          16px/1.55 system-ui,
+          sans-serif;
+        color: #1e2226;
+        animation: boot-note-in 0s 1s both;
+      }
+      @keyframes boot-note-in {
+        from {
+          visibility: hidden;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #17191b;
+        }
+        .boot-note {
+          color: #e6e8ea;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-note">
+        <!-- build:replace-start -->
+        <p><strong>This is the source page, which only runs through the dev server.</strong></p>
+        <p>
+          Run <code>npm run dev</code> and open the address it prints, or run <code>npm run build</code> and open
+          <code>dist/index.html</code>.
+        </p>
+        <!-- build:replace-end -->
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
