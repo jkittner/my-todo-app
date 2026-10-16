@@ -10,9 +10,20 @@ interface Props {
   onExportCalendar: () => void;
   onRestore: (lib: Library, mode: 'replace' | 'merge') => void;
   onError: (message: string) => void;
+  onFolderBackup: () => void;
+  folderBackupOn: boolean;
 }
 
-export function DataMenu({ taskCount, onBackup, onExportTasks, onExportCalendar, onRestore, onError }: Props) {
+export function DataMenu({
+  taskCount,
+  onBackup,
+  onExportTasks,
+  onExportCalendar,
+  onRestore,
+  onError,
+  onFolderBackup,
+  folderBackupOn,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<Library | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -61,11 +72,20 @@ export function DataMenu({ taskCount, onBackup, onExportTasks, onExportCalendar,
       </button>
       {open && (
         <div class="menu-panel" id="data-menu-panel">
-          <p class="menu-note">Tasks are saved only in this browser, on this device.</p>
+          <p class="menu-note">
+            {folderBackupOn
+              ? 'Tasks are saved in this browser and backed up to a folder on this device.'
+              : 'Tasks are saved only in this browser, on this device.'}
+          </p>
           <ul>
             <li>
               <button type="button" onClick={run(onBackup)}>
                 Back up tasks (.json)
+              </button>
+            </li>
+            <li>
+              <button type="button" onClick={run(onFolderBackup)}>
+                Back up to a folder automatically
               </button>
             </li>
             <li>
@@ -92,7 +112,7 @@ export function DataMenu({ taskCount, onBackup, onExportTasks, onExportCalendar,
         accept="application/json,.json"
         class="visually-hidden"
         tabIndex={-1}
-        aria-label="Backup file"
+        aria-hidden="true"
         data-testid="restore-input"
         onChange={onFile}
       />

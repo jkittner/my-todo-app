@@ -211,7 +211,7 @@ describe.each([300, 1000, 5000])('with %i tasks', (n) => {
 
     const calendarMs = await timedAsync(() => go('#/calendar'));
     withinBudget('Calendar page', calendarMs, budget.calendar);
-    expect(screen.getByRole('grid', { name: 'October 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: 'October 2026, due dates' })).toBeInTheDocument();
     console.info(
       `[perf] ${n} tasks (jsdom): board ${boardMs.toFixed(0)} ms, search ${searchMs.toFixed(0)} ms, insights ${insightsMs.toFixed(0)} ms, calendar ${calendarMs.toFixed(0)} ms`,
     );

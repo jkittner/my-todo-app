@@ -338,6 +338,74 @@ kbd {
   align-items: center;
 }
 
+.backup-status {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.backup-status:hover {
+  background: var(--well);
+  color: var(--ink);
+}
+
+.backup-status.is-error {
+  color: var(--signal-high);
+  font-weight: 600;
+}
+
+.backup-status.is-paused {
+  border: 1px solid var(--rule-strong);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.folder-backup p {
+  margin: 0 0 14px;
+  line-height: 1.55;
+}
+
+.folder-backup code {
+  font-size: 0.9em;
+  background: var(--well);
+  padding: 1px 4px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.folder-backup .notice {
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--well);
+}
+
+.folder-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 14px;
+}
+
+.folder-facts div {
+  display: contents;
+}
+
+.folder-facts dt {
+  color: var(--muted);
+}
+
+.folder-facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .data-menu {
   position: relative;
 }
@@ -1533,6 +1601,48 @@ fieldset.field legend {
 
 .calendar-export {
   margin-left: auto;
+}
+
+.calendar-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+
+.calendar-mode {
+  width: auto;
+}
+
+.segment-button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.segment-button + .segment-button {
+  border-left: 1px solid var(--rule-strong);
+}
+
+.segment-button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+  font-weight: 600;
+}
+
+.segment-button:focus-visible {
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 4px var(--surface);
+}
+
+.calendar-count {
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .calendar-hint {

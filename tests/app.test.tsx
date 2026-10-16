@@ -107,10 +107,16 @@ describe('App', () => {
     await user.click(screen.getByRole('link', { name: /Draft API proposal/ }));
     await vi.waitFor(() => expect(location.hash).toBe('#/calendar?task=api'));
     expect(await screen.findByRole('dialog', { name: 'Edit task' })).toBeInTheDocument();
-    expect(screen.getByRole('grid', { name: 'October 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: 'October 2026, due dates' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     await vi.waitFor(() => expect(location.hash).toBe('#/calendar'));
-    expect(screen.getByRole('grid', { name: 'October 2026' })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: 'October 2026, due dates' })).toBeInTheDocument();
+
+    // The completed view stays selected while a task is open and after it closes.
+    await user.click(screen.getByRole('button', { name: 'Completed' }));
+    await user.click(screen.getByRole('button', { name: 'Due dates' }));
+    await user.click(screen.getByRole('button', { name: 'Completed' }));
+    expect(screen.getByRole('grid', { name: 'October 2026, completed tasks' })).toBeInTheDocument();
   });
 
   it('closes the edit modal without saving', async () => {

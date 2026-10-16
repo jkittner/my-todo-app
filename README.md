@@ -17,6 +17,14 @@ Each browser keeps its own tasks. To move them to another browser or device, use
 
 To try a large board, restore `examples/sample-1500-tasks.json` (1,500 tasks, about a third in each column). `npm run sample -- <count>` generates other sizes.
 
+### Automatic backup to a synced folder
+
+**Data → Back up to a folder automatically** writes `todo-board-backup.json` into a folder you choose, about a second after every change. If you pick a folder that the sciebo or Nextcloud desktop app syncs, the backup reaches the cloud, and the cloud keeps earlier versions of the file. To recover, use **Restore from backup** with that file. The header shows when the last backup was written.
+
+- This needs Chrome or Edge. Firefox can't write to folders on disk.
+- After a browser restart, Chrome may ask once for access again. The header then shows **Resume backup**.
+- It's one-way: the app only ever writes this file and never reads from the folder.
+
 ### Thunderbird
 
 Choose **Data → Export tasks for Thunderbird (.ics)** to export your tasks as to-dos. Choose **Export calendar (.ics)** to export them as all-day events on their due dates. In Thunderbird, go to **File → Import…**, pick **Import from a file**, and select the `.ics` file.

@@ -13,6 +13,28 @@ interface Props {
 }
 
 const MAX_PER_DAY = 3;
+
+/** What the calendar places on each day: when tasks are due, or when they were finished. */
+export type CalendarMode = 'due' | 'completed';
+
+/** The day a task belongs on in the given mode, or null when it has no place there. */
+export function calendarDay(task: Task, mode: CalendarMode): string | null {
+  if (mode === 'due') return task.dueDate;
+  return task.status === 'done' && task.completedAt ? toDateKey(new Date(task.completedAt)) : null;
+}
+
+const MODE_TEXT: Record<CalendarMode, { hint: string; empty: string; count: (n: number) => string }> = {
+  due: {
+    hint: 'Tasks appear on their due date. Select a task to open it. In Thunderbird, use File, then Import, and pick the exported file.',
+    empty: 'Nothing is due this month.',
+    count: (n) => `${n} ${n === 1 ? 'task' : 'tasks'} due this month`,
+  },
+  completed: {
+    hint: 'Tasks appear on the day they were moved to Done. Select a task to open it.',
+    empty: 'Nothing was completed this month.',
+    count: (n) => `${n} ${n === 1 ? 'task' : 'tasks'} completed this month`,
+  },
+};
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const monthFmt = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' });
 const dayFmt = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -23,19 +45,21 @@ export function monthGrid(month: Date): Date[] {
   return Array.from({ length: 42 }, (_, i) => addDays(first, i));
 }
 
-function TaskChip({ task, now }: { task: Task; now: Date }) {
-  const late = isOverdue(task, now);
+function TaskChip({ task, now, mode }: { task: Task; now: Date; mode: CalendarMode }) {
+  // In the completed view every task is done, so the strike-through would only add noise.
+  const late = mode === 'due' && isOverdue(task, now);
+  const struck = mode === 'due' && task.status === 'done';
   const detail = [
     task.priority ? `${PRIORITY_LABEL[task.priority]} priority` : null,
     late ? 'overdue' : null,
-    task.status === 'done' ? 'done' : null,
+    struck ? 'done' : null,
   ]
     .filter(Boolean)
     .join(', ');
   return (
     <a
       href={routeHref('calendar', task.id)}
-      class={`cal-chip ${task.priority ? `prio-${task.priority}` : ''} ${task.status === 'done' ? 'is-done' : ''} ${late ? 'is-overdue' : ''}`}
+      class={`cal-chip ${task.priority ? `prio-${task.priority}` : ''} ${struck ? 'is-done' : ''} ${late ? 'is-overdue' : ''}`}
       aria-label={detail ? `${task.title} (${detail})` : task.title}
     >
       {task.title}
@@ -46,10 +70,18 @@ function TaskChip({ task, now }: { task: Task; now: Date }) {
 export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Props) {
   const [month, setMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [mode, setMode] = useState<CalendarMode>('due');
   const compact = useMediaQuery('(max-width: 640px)');
+  const text = MODE_TEXT[mode];
 
   const byDay = new Map<string, Task[]>();
-  for (const t of tasks) byDay.set(t.dueDate, [...(byDay.get(t.dueDate) ?? []), t]);
+  for (const t of tasks) {
+    const key = calendarDay(t, mode);
+    if (!key) continue;
+    const list = byDay.get(key);
+    if (list) list.push(t);
+    else byDay.set(key, [t]);
+  }
   for (const list of byDay.values())
     list.sort(
       (a, b) =>
@@ -63,6 +95,7 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
   const inMonth = (d: Date) => d.getMonth() === month.getMonth();
   const shift = (n: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
   const monthDaysWithTasks = days.filter((d) => inMonth(d) && byDay.has(toDateKey(d)));
+  const monthCount = monthDaysWithTasks.reduce((n, d) => n + (byDay.get(toDateKey(d)) as Task[]).length, 0);
 
   return (
     <div class="calendar-page">
@@ -94,14 +127,32 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
           </button>
         </div>
       </div>
-      <p class="hint calendar-hint">
-        Tasks appear on their due date. Select a task to open it. In Thunderbird, use File, then Import, and pick the
-        exported file.
-      </p>
+      <div class="calendar-bar">
+        <div class="segmented calendar-mode" role="group" aria-label="Calendar view">
+          {(['due', 'completed'] as CalendarMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              class="segment-button"
+              aria-pressed={mode === m}
+              onClick={() => {
+                setMode(m);
+                setExpanded(null);
+              }}
+            >
+              {m === 'due' ? 'Due dates' : 'Completed'}
+            </button>
+          ))}
+        </div>
+        <p class="calendar-count" aria-live="polite">
+          {text.count(monthCount)}
+        </p>
+      </div>
+      <p class="hint calendar-hint">{text.hint}</p>
 
       {compact ? (
         monthDaysWithTasks.length === 0 ? (
-          <p class="empty-note">Nothing is due this month.</p>
+          <p class="empty-note">{text.empty}</p>
         ) : (
           <ol class="agenda">
             {monthDaysWithTasks.map((d) => {
@@ -112,7 +163,7 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
                   <ul>
                     {(byDay.get(key) as Task[]).map((t) => (
                       <li key={t.id}>
-                        <TaskChip task={t} now={now} />
+                        <TaskChip task={t} now={now} mode={mode} />
                       </li>
                     ))}
                   </ul>
@@ -122,7 +173,11 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
           </ol>
         )
       ) : (
-        <div class="cal-grid" role="grid" aria-label={monthFmt.format(month)}>
+        <div
+          class={`cal-grid ${mode === 'completed' ? 'is-completed' : ''}`}
+          role="grid"
+          aria-label={`${monthFmt.format(month)}, ${mode === 'due' ? 'due dates' : 'completed tasks'}`}
+        >
           <div role="row" class="cal-weekdays">
             {WEEKDAYS.map((w) => (
               <div role="columnheader" key={w}>
@@ -148,7 +203,7 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
                       {d.getDate()}
                     </span>
                     {shown.map((t) => (
-                      <TaskChip key={t.id} task={t} now={now} />
+                      <TaskChip key={t.id} task={t} now={now} mode={mode} />
                     ))}
                     {list.length > MAX_PER_DAY && (
                       <button type="button" class="button-link cal-more" onClick={() => setExpanded(open ? null : key)}>

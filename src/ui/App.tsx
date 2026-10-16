@@ -13,6 +13,8 @@ import { TaskModal } from './task/TaskModal';
 import { Insights } from './insights/Insights';
 import { CalendarView } from './calendar/CalendarView';
 import { DataMenu } from './data/DataMenu';
+import { FolderBackupDialog, FolderBackupStatus } from './data/FolderBackup';
+import { defaultFolderDeps, useFolderBackup, type FolderBackupDeps } from './data/useFolderBackup';
 
 const NAV: [Page, string][] = [
   ['board', 'Board'],
@@ -24,11 +26,16 @@ interface Props {
   /** Injected in tests; defaults to the browser's local storage. */
   load?: () => ReturnType<typeof loadDb>;
   save?: (db: Db) => boolean;
+  /** Injected in tests; defaults to the File System Access API and IndexedDB. */
+  folderDeps?: FolderBackupDeps;
 }
 
-export function App({ load = loadDb, save = saveDb }: Props) {
+export function App({ load = loadDb, save = saveDb, folderDeps }: Props) {
   const [initial] = useState(load);
+  const [folderSetup] = useState(() => folderDeps ?? defaultFolderDeps());
+  const [folderDialog, setFolderDialog] = useState(false);
   const [db, dispatch] = useReducer(reducer, initial.db);
+  const folderBackup = useFolderBackup(db, folderSetup);
   const [toast, setToast] = useState<ToastMessage | null>(
     initial.error ? { id: 0, text: initial.error, tone: 'error' } : null,
   );
@@ -44,6 +51,10 @@ export function App({ load = loadDb, save = saveDb }: Props) {
     setToast({ id: toastId.current++, text, tone });
   }, []);
   const clearToast = useCallback(() => setToast(null), []);
+
+  useEffect(() => {
+    if (folderBackup.phase === 'error' && folderBackup.error) notify(folderBackup.error, 'error');
+  }, [folderBackup.phase, folderBackup.error]);
 
   useEffect(() => {
     // Leave unreadable stored data alone until the person changes something.
@@ -161,6 +172,7 @@ export function App({ load = loadDb, save = saveDb }: Props) {
           </ul>
         </nav>
         <div class="header-actions">
+          <FolderBackupStatus backup={folderBackup} now={now} onOpen={() => setFolderDialog(true)} />
           <button type="button" class="button-primary" onClick={startAdding}>
             Add task
           </button>
@@ -171,6 +183,8 @@ export function App({ load = loadDb, save = saveDb }: Props) {
             onExportCalendar={exportCalendar}
             onRestore={restore}
             onError={(m) => notify(m, 'error')}
+            onFolderBackup={() => setFolderDialog(true)}
+            folderBackupOn={folderBackup.folder !== null}
           />
         </div>
       </header>
@@ -208,6 +222,7 @@ export function App({ load = loadDb, save = saveDb }: Props) {
           onClose={closeModal}
         />
       )}
+      {folderDialog && <FolderBackupDialog backup={folderBackup} now={now} onClose={() => setFolderDialog(false)} />}
       <Toast message={toast} onDone={clearToast} />
     </>
   );

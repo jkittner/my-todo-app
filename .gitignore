@@ -3,3 +3,7 @@ dist
 coverage
 test-results
 playwright-report
+
+# Local credentials, never commit
+.secrets
+.env*

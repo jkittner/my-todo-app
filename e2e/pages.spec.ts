@@ -156,3 +156,36 @@ test('restores the 1,500-task example backup', async ({ page }) => {
   await expect(page.getByRole('status')).toContainText('Restored 1500 tasks from backup');
   await expect.poll(async () => (await stored(page)).tasks.length).toBe(1500);
 });
+
+test('calendar switches between due dates and completed tasks', async ({ page }) => {
+  await openApp(page, '#/calendar');
+  await expect(page.getByRole('button', { name: 'Due dates' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('7 tasks due this month')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Completed' }).click();
+  await expect(page.getByText('2 tasks completed this month')).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: 'Tuesday, October 6' }).getByRole('link')).toHaveText(
+    'Call dentist to reschedule',
+  );
+  await expect(page.getByRole('gridcell', { name: 'Sunday, October 11' }).getByRole('link')).toHaveText(
+    'Prepare team retro slides',
+  );
+  // Open tasks are not in this view.
+  await expect(page.getByRole('link', { name: /Book bike service/ })).toHaveCount(0);
+
+  // Opening a finished task keeps the completed view.
+  await page.getByRole('link', { name: /Prepare team retro slides/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Edit task' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Completed' })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByRole('button', { name: 'Previous month' }).click();
+  await expect(page.getByRole('gridcell', { name: 'Sunday, September 27' }).getByRole('link')).toHaveText(
+    'Set up laptop backups',
+  );
+
+  // Coming back to the calendar starts on due dates again.
+  await page.getByRole('link', { name: 'Board', exact: true }).click();
+  await page.getByRole('link', { name: 'Calendar' }).click();
+  await expect(page.getByRole('button', { name: 'Due dates' })).toHaveAttribute('aria-pressed', 'true');
+});

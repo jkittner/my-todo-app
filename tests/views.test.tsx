@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Insights } from '../src/ui/insights/Insights';
 import { BarList, columnPath, GroupedColumns, ShareBar } from '../src/ui/insights/charts';
-import { CalendarView, monthGrid } from '../src/ui/calendar/CalendarView';
+import { calendarDay, CalendarView, monthGrid } from '../src/ui/calendar/CalendarView';
 import { DataMenu } from '../src/ui/data/DataMenu';
 import { serializeBackup } from '../src/io/backup';
 import { changeDueDate } from '../src/model/task';
@@ -277,6 +277,82 @@ describe('CalendarView', () => {
     );
     expect(screen.getByRole('heading', { name: 'Thursday, October 15' }).closest('li')).toHaveClass('is-today');
   });
+
+  describe('completed view', () => {
+    const finished = () => [
+      // Due later, but finished two days ago (Oct 13).
+      walk(makeTask({ id: 'early', title: 'Finished early', priority: 'high', dueDate: day(10) }), [['done', -2]]),
+      // Overdue when it was finished on Oct 13 too; no overdue styling in this view.
+      walk(makeTask({ id: 'late', title: 'Finished late', dueDate: day(-5) }), [['done', -2]]),
+      // Finished last month.
+      walk(makeTask({ id: 'sept', title: 'September work', dueDate: day(-30) }), [['done', -25]]),
+      // Reopened after being done: no completion date any more.
+      walk(makeTask({ id: 'reopened', title: 'Reopened', dueDate: day(1) }), [
+        ['done', -3],
+        ['doing', -1],
+      ]),
+      makeTask({ id: 'open', title: 'Still open', dueDate: day(2) }),
+    ];
+
+    it('places only finished tasks, on the day they were completed', () => {
+      const [early, , sept, reopened, open] = finished();
+      expect(calendarDay(early, 'completed')).toBe(day(-2));
+      expect(calendarDay(early, 'due')).toBe(day(10));
+      expect(calendarDay(sept, 'completed')).toBe(day(-25));
+      expect(calendarDay(reopened, 'completed')).toBeNull();
+      expect(calendarDay(open, 'completed')).toBeNull();
+      expect(calendarDay({ ...early, completedAt: null }, 'completed')).toBeNull();
+    });
+
+    it('switches between due dates (the default) and completed tasks', async () => {
+      const user = userEvent.setup();
+      render(<CalendarView tasks={finished()} now={NOW} onExportCalendar={vi.fn()} onExportTasks={vi.fn()} />);
+      const due = screen.getByRole('button', { name: 'Due dates' });
+      const completed = screen.getByRole('button', { name: 'Completed' });
+      expect(due).toHaveAttribute('aria-pressed', 'true');
+      expect(completed).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByRole('grid', { name: 'October 2026, due dates' })).toBeInTheDocument();
+      expect(screen.getByText('4 tasks due this month')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Finished late (done)' })).toHaveClass('is-done');
+
+      await user.click(completed);
+      expect(completed).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('grid', { name: 'October 2026, completed tasks' })).toBeInTheDocument();
+      expect(screen.getByText('2 tasks completed this month')).toBeInTheDocument();
+      expect(screen.getByText(/on the day they were moved to Done/)).toBeInTheDocument();
+      const day13 = screen.getByRole('gridcell', { name: 'Tuesday, October 13' });
+      expect(
+        within(day13)
+          .getAllByRole('link')
+          .map((l) => l.textContent),
+      ).toEqual(['Finished early', 'Finished late']);
+      const late = within(day13).getByRole('link', { name: 'Finished late' });
+      expect(late).not.toHaveClass('is-done');
+      expect(late).not.toHaveClass('is-overdue');
+      expect(late).toHaveAttribute('href', '#/calendar?task=late');
+      expect(within(day13).getByRole('link', { name: 'Finished early (High priority)' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Reopened|Still open/ })).toBeNull();
+
+      await user.click(screen.getByRole('button', { name: 'Previous month' }));
+      expect(screen.getByText('1 task completed this month')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'September work' })).toBeInTheDocument();
+
+      await user.click(due);
+      expect(screen.getByRole('grid', { name: 'September 2026, due dates' })).toBeInTheDocument();
+      expect(screen.getByText('1 task due this month')).toBeInTheDocument();
+    });
+
+    it('shows an empty completed month in the agenda', async () => {
+      media.matches = () => true;
+      const user = userEvent.setup();
+      render(<CalendarView tasks={finished()} now={NOW} onExportCalendar={vi.fn()} onExportTasks={vi.fn()} />);
+      await user.click(screen.getByRole('button', { name: 'Completed' }));
+      expect(screen.getByRole('heading', { name: 'Tuesday, October 13' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Next month' }));
+      expect(screen.getByText('Nothing was completed this month.')).toBeInTheDocument();
+      expect(screen.getByText('0 tasks completed this month')).toBeInTheDocument();
+    });
+  });
 });
 
 describe('DataMenu', () => {
@@ -288,6 +364,8 @@ describe('DataMenu', () => {
       onExportCalendar: vi.fn(),
       onRestore: vi.fn(),
       onError: vi.fn(),
+      onFolderBackup: vi.fn(),
+      folderBackupOn: false,
     };
     render(<DataMenu {...props} />);
     return props;
