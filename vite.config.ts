@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import type { Plugin } from 'vite';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /** In the built page, the fallback note speaks to visitors instead of developers. */
 const buildFallbackNote: Plugin = {
@@ -14,9 +16,23 @@ const buildFallbackNote: Plugin = {
     ),
 };
 
+/** Vite never inlines `<link rel="icon">`, so embed the favicon itself to keep the build a single file. */
+const inlineFavicon: Plugin = {
+  name: 'inline-favicon',
+  apply: 'build',
+  transformIndexHtml: {
+    order: 'pre',
+    handler: (html) =>
+      html.replace(/href="\/(src\/assets\/favicon\.png)"/, (_, path: string) => {
+        const data = readFileSync(fileURLToPath(new URL(path, import.meta.url))).toString('base64');
+        return `href="data:image/png;base64,${data}"`;
+      }),
+  },
+};
+
 export default defineConfig({
   base: './',
-  plugins: [preact(), buildFallbackNote, viteSingleFile()],
+  plugins: [preact(), buildFallbackNote, inlineFavicon, viteSingleFile()],
   test: {
     globals: true,
     environment: 'jsdom',
