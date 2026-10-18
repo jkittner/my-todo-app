@@ -53,6 +53,8 @@ describe('dates', () => {
     expect(dueDeadline('2026-10-15')).toEqual(new Date(2026, 9, 16));
     expect(isPastDue('2026-10-15', NOW)).toBe(false);
     expect(isPastDue('2026-10-14', NOW)).toBe(true);
+    expect(isPastDue('2026-10-18', new Date(2026, 9, 18, 23, 59, 59, 999))).toBe(false);
+    expect(isPastDue('2026-10-18', new Date(2026, 9, 19, 0, 0))).toBe(true);
   });
 
   it('measures and formats durations', () => {

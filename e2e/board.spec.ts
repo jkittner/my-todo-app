@@ -179,6 +179,8 @@ test.describe('board', () => {
     expect(await cardTitles(page, 'Done')).toContain('Migrate notes to new laptop');
     await page.getByLabel('Hide done tasks').check();
     await expect(column(page, 'Done')).toHaveCount(0);
+    // Saving runs right after the screen updates; reloading before that would drop the change.
+    await expect.poll(async () => (await stored(page)).prefs.hideDone).toBe(true);
     await page.reload();
     await expect(page.getByLabel('Hide done tasks')).toBeChecked();
     await expect(column(page, 'Done')).toHaveCount(0);
