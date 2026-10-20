@@ -36,6 +36,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    pool: 'vmThreads',
     setupFiles: ['./tests/setup.ts'],
     // Generous so a busy machine (e.g. a coverage run next to other work) cannot time tests out.
     testTimeout: 15_000,

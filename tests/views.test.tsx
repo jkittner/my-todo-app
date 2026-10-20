@@ -282,8 +282,8 @@ describe('CalendarView', () => {
     const finished = () => [
       // Due later, but finished two days ago (Oct 13).
       walk(makeTask({ id: 'early', title: 'Finished early', priority: 'high', dueDate: day(10) }), [['done', -2]]),
-      // Overdue when it was finished on Oct 13 too; no overdue styling in this view.
-      walk(makeTask({ id: 'late', title: 'Finished late', dueDate: day(-5) }), [['done', -2]]),
+      // Overdue when it was finished on Oct 13 too, a few hours before the one above; no overdue styling in this view.
+      walk(makeTask({ id: 'late', title: 'Finished late', dueDate: day(-5) }), [['done', -2.25]]),
       // Finished last month.
       walk(makeTask({ id: 'sept', title: 'September work', dueDate: day(-30) }), [['done', -25]]),
       // Reopened after being done: no completion date any more.
@@ -325,7 +325,7 @@ describe('CalendarView', () => {
         within(day13)
           .getAllByRole('link')
           .map((l) => l.textContent),
-      ).toEqual(['Finished early', 'Finished late']);
+      ).toEqual(['Finished late', 'Finished early']);
       const late = within(day13).getByRole('link', { name: 'Finished late' });
       expect(late).not.toHaveClass('is-done');
       expect(late).not.toHaveClass('is-overdue');

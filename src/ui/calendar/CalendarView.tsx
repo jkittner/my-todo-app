@@ -45,6 +45,20 @@ export function monthGrid(month: Date): Date[] {
   return Array.from({ length: 42 }, (_, i) => addDays(first, i));
 }
 
+/** Open tasks first, then by priority and title. */
+function byDueOrder(a: Task, b: Task): number {
+  return (
+    Number(a.status === 'done') - Number(b.status === 'done') ||
+    priorityRank(a.priority) - priorityRank(b.priority) ||
+    a.title.localeCompare(b.title)
+  );
+}
+
+/** Earliest completion first, so a day reads in the order its tasks were finished. */
+function byCompletionTime(a: Task, b: Task): number {
+  return Date.parse(a.completedAt as string) - Date.parse(b.completedAt as string) || a.title.localeCompare(b.title);
+}
+
 function TaskChip({ task, now, mode }: { task: Task; now: Date; mode: CalendarMode }) {
   // In the completed view every task is done, so the strike-through would only add noise.
   const late = mode === 'due' && isOverdue(task, now);
@@ -82,13 +96,7 @@ export function CalendarView({ tasks, now, onExportCalendar, onExportTasks }: Pr
     if (list) list.push(t);
     else byDay.set(key, [t]);
   }
-  for (const list of byDay.values())
-    list.sort(
-      (a, b) =>
-        Number(a.status === 'done') - Number(b.status === 'done') ||
-        priorityRank(a.priority) - priorityRank(b.priority) ||
-        a.title.localeCompare(b.title),
-    );
+  for (const list of byDay.values()) list.sort(mode === 'due' ? byDueOrder : byCompletionTime);
 
   const today = toDateKey(now);
   const days = monthGrid(month);
