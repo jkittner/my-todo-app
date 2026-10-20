@@ -342,6 +342,25 @@ describe('CalendarView', () => {
       expect(screen.getByText('1 task due this month')).toBeInTheDocument();
     });
 
+    it('orders a day by completion time, then by title for simultaneous completions', async () => {
+      const user = userEvent.setup();
+      const tasks = [
+        walk(makeTask({ title: 'Zebra', priority: 'high' }), [['done', -1]]),
+        walk(makeTask({ title: 'Beta' }), [['done', -1]]),
+        walk(makeTask({ title: 'Alpha' }), [['done', -1]]),
+        walk(makeTask({ title: 'First' }), [['done', -1.25]]),
+      ];
+      render(<CalendarView tasks={tasks} now={NOW} onExportCalendar={vi.fn()} onExportTasks={vi.fn()} />);
+      await user.click(screen.getByRole('button', { name: 'Completed' }));
+      const day14 = screen.getByRole('gridcell', { name: 'Wednesday, October 14' });
+      await user.click(within(day14).getByRole('button', { name: '1 more' }));
+      expect(
+        within(day14)
+          .getAllByRole('link')
+          .map((l) => l.textContent),
+      ).toEqual(['First', 'Alpha', 'Beta', 'Zebra']);
+    });
+
     it('shows an empty completed month in the agenda', async () => {
       media.matches = () => true;
       const user = userEvent.setup();
