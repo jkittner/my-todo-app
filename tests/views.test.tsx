@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/preact'
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Insights } from '../src/ui/insights/Insights';
-import { BarList, columnPath, GroupedColumns, ShareBar } from '../src/ui/insights/charts';
-import { calendarDay, CalendarView, monthGrid } from '../src/ui/calendar/CalendarView';
+import { BarList, BoxPlotList, columnPath, GroupedColumns, niceStep, ShareBar } from '../src/ui/insights/charts';
+import { calendarDay, CalendarView, fitLines, monthGrid, weekLines } from '../src/ui/calendar/CalendarView';
 import { DataMenu } from '../src/ui/data/DataMenu';
 import { serializeBackup } from '../src/io/backup';
 import { changeDueDate } from '../src/model/task';
@@ -53,6 +53,7 @@ describe('Insights', () => {
       'Tasks by status',
       'Tasks by priority',
       'Tasks by category',
+      'Time to complete by category',
       'Priority and status',
       'Completed and overdue per week',
     ])
@@ -60,9 +61,18 @@ describe('Insights', () => {
     expect(screen.getByLabelText('To do: 2 tasks (50%)')).toBeInTheDocument();
     expect(screen.getByLabelText('High: 2 tasks (50%)')).toBeInTheDocument();
     expect(screen.getByLabelText('Work: 2 tasks')).toBeInTheDocument();
+    // Only the rescheduled task is done: started 8 days ago, finished 3 days ago.
+    const completion = screen.getByRole('heading', { name: 'Time to complete by category' })
+      .parentElement as HTMLElement;
+    expect(
+      within(completion).getByLabelText('Work: median 5 days, IQR 5 days to 5 days, whiskers 5 days to 5 days, 1 task'),
+    ).toBeInTheDocument();
+    expect(
+      within(completion).getByRole('row', { name: 'Work 5 days 5 days to 5 days 5 days to 5 days 1' }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('High, To do: 1 tasks')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Completed and overdue tasks per week' })).toBeInTheDocument();
-    expect(screen.getAllByText('Show as table')).toHaveLength(5);
+    expect(screen.getAllByText('Show as table')).toHaveLength(6);
 
     const month = screen.getByRole('region', { name: 'Due in October 2026' });
     const rows = within(month).getAllByRole('row').slice(1);
@@ -76,10 +86,37 @@ describe('Insights', () => {
     expect(within(rows[2]).getByText('Medium')).toBeInTheDocument();
   });
 
+  it('shows time to complete in hours or minutes when tasks finish within a day', () => {
+    const done = (category: string, hours: number) =>
+      walk(makeTask({ categories: [category], created: -5 }), [
+        ['doing', -1],
+        ['done', -1 + hours / 24],
+      ]);
+    const card = () =>
+      screen.getByRole('heading', { name: 'Time to complete by category' }).parentElement as HTMLElement;
+    const ticks = () => [...card().querySelectorAll('.box-ticks span')].map((t) => t.textContent);
+
+    const { rerender } = render(<Insights tasks={[1, 2, 3, 5, 8].map((h) => done('Work', h))} now={NOW} />);
+    expect(ticks()).toEqual(['0', '2', '4', '6', '8']);
+    expect(card().querySelector('.box-axis')).toHaveTextContent('hours');
+    expect(
+      within(card()).getByLabelText('Work: median 3 h, IQR 2 h to 5 h, whiskers 1 h to 8 h, 5 tasks'),
+    ).toBeInTheDocument();
+    expect(within(card()).getByRole('row', { name: 'Work 3 h 2 h to 5 h 1 h to 8 h 5' })).toBeInTheDocument();
+
+    rerender(<Insights tasks={[6, 12, 18, 30].map((m) => done('Quick', m / 60))} now={NOW} />);
+    expect(ticks()).toEqual(['0', '10', '20', '30']);
+    expect(card().querySelector('.box-axis')).toHaveTextContent('minutes');
+    expect(
+      within(card()).getByLabelText('Quick: median 15 min, IQR 10.5 min to 21 min, whiskers 6 min to 30 min, 4 tasks'),
+    ).toBeInTheDocument();
+  });
+
   it('handles an empty board', () => {
     render(<Insights tasks={[]} now={NOW} />);
     expect(screen.getAllByText('Not enough data yet')).toHaveLength(2);
     expect(screen.getAllByText('No tasks to show yet.')).toHaveLength(3);
+    expect(screen.getByText('No completed tasks yet.')).toBeInTheDocument();
     expect(screen.getByText('Nothing is due this month.')).toBeInTheDocument();
     expect(screen.getAllByText(/^0 tasks$/)).toHaveLength(2);
   });
@@ -127,6 +164,72 @@ describe('chart parts', () => {
   it('renders bar lists with a custom unit', () => {
     render(<BarList data={data} unit="items" />);
     expect(screen.getByLabelText('Alpha: 3 items')).toHaveStyle({ width: '100%' });
+  });
+
+  it('draws box plots on a shared scale from zero', () => {
+    const { container } = render(
+      <BoxPlotList
+        unit="days"
+        format={(v) => `${v} d`}
+        rows={[
+          { key: 'a', label: 'Alpha', count: 5, box: { low: 1, q1: 2, median: 3, q3: 4, high: 8 } },
+          { key: 'b', label: 'Beta', count: 1, box: { low: 0.5, q1: 0.5, median: 0.5, q3: 0.5, high: 0.5 } },
+        ]}
+      />,
+    );
+    // Whiskers run from 0.5 to 8: steps of 2 from 0 to 8.
+    const alpha = screen.getByLabelText('Alpha: median 3 d, IQR 2 d to 4 d, whiskers 1 d to 8 d, 5 tasks');
+    expect(alpha.querySelector('.box-whisker')).toHaveStyle({ left: '12.5%', width: '87.5%' });
+    expect(alpha.querySelector('.box')).toHaveStyle({ left: '25%', width: '25%' });
+    expect(alpha.querySelector('.box-median')).toHaveStyle({ left: '37.5%' });
+    expect(
+      screen.getByLabelText('Beta: median 0.5 d, IQR 0.5 d to 0.5 d, whiskers 0.5 d to 0.5 d, 1 task'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('3 d')).toHaveClass('bar-value');
+    expect([...container.querySelectorAll('.box-ticks span')].map((t) => t.textContent)).toEqual([
+      '0',
+      '2',
+      '4',
+      '6',
+      '8',
+    ]);
+    expect(container.querySelector('.box-axis')).toHaveTextContent('days');
+  });
+
+  it('fits box plot scales to the lowest and highest whisker shown', () => {
+    const scale = (...boxes: [low: number, high: number][]) => {
+      const rows = boxes.map(([low, high], i) => ({
+        key: `r${i}`,
+        label: `R${i}`,
+        count: 1,
+        box: { low, q1: low, median: low, q3: high, high },
+      }));
+      const { container, unmount } = render(<BoxPlotList unit="days" format={String} rows={rows} />);
+      const ticks = [...container.querySelectorAll('.box-ticks span')].map((t) => Number(t.textContent));
+      const whisker = container.querySelector('.box-whisker') as HTMLElement;
+      const place = [whisker.style.left, whisker.style.width];
+      act(() => {
+        unmount();
+      });
+      return { ticks, place };
+    };
+    // Starts below the lowest whisker, not at zero.
+    expect(scale([12, 33], [15, 20])).toEqual({ ticks: [10, 20, 30, 40], place: ['6.666666666666667%', '70%'] });
+    expect(scale([0, 170])).toEqual({ ticks: [0, 50, 100, 150, 200], place: ['0%', '85%'] });
+    // Small ranges get small steps.
+    expect(scale([0.25, 0.9]).ticks).toEqual([0.2, 0.4, 0.6, 0.8, 1]);
+    // All values equal: a step around the value, or a unit step at zero.
+    expect(scale([9, 9]).ticks).toEqual([5, 10]);
+    expect(scale([0, 0]).ticks).toEqual([0, 1]);
+  });
+
+  it('picks round steps', () => {
+    expect([0.03, 1, 1.5, 3, 7, 12].map(niceStep)).toEqual([0.05, 1, 2, 5, 10, 20]);
+  });
+
+  it('says when there is nothing to draw box plots from', () => {
+    render(<BoxPlotList unit="days" format={String} rows={[]} />);
+    expect(screen.getByText('No completed tasks yet.')).toBeInTheDocument();
   });
 
   it('scales column charts to the measured width', () => {
@@ -202,6 +305,28 @@ describe('CalendarView', () => {
     makeTask({ id: 'x2', title: 'Another next month', dueDate: day(30) }),
   ];
 
+  /** jsdom puts the grid at the top of the page, so the window height is the room it fills. */
+  const windowHeight = (px: number) => vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(px);
+
+  it('fits chip lines into the grid height', () => {
+    // 31px weekdays, 8px frame, 6 × 36px day chrome, 23px per line.
+    expect(fitLines(255 + 12 * 23)).toBe(12);
+    expect(fitLines(255 + 12 * 23 - 1)).toBe(11);
+    expect(fitLines(100)).toBe(0);
+  });
+
+  it('shares lines between weeks within bounds', () => {
+    // Even share 3.5: rows get 2 to 7 lines. The quiet week is satisfied, the busy one is capped.
+    expect(weekLines([0, 4, 20, 0, 0, 0], 21)).toEqual([2, 4, 7, 2, 2, 2]);
+    // Plenty of room: quiet weeks still keep half an even share.
+    expect(weekLines([1, 1, 1, 1, 1, 1], 60)).toEqual([5, 5, 5, 5, 5, 5]);
+    // Spare lines go to the week with the fewest so far; ties go to the earlier week.
+    expect(weekLines([5, 5, 0, 0, 0, 0], 13)).toEqual([3, 2, 2, 2, 2, 2]);
+    expect(weekLines([5, 5, 0, 0, 0, 0], 14)).toEqual([3, 3, 2, 2, 2, 2]);
+    // No room at all: every week still shows one chip and a "more" link.
+    expect(weekLines([9, 9, 9, 9, 9, 9], 0)).toEqual([2, 2, 2, 2, 2, 2]);
+  });
+
   it('builds a 6-week grid starting on Monday', () => {
     const grid = monthGrid(new Date(2026, 9, 1));
     expect(grid).toHaveLength(42);
@@ -209,6 +334,8 @@ describe('CalendarView', () => {
   });
 
   it('places tasks on their due day and links to them', async () => {
+    // 13 lines: two for each week, and the spare one for the busy week of October 19.
+    windowHeight(24 + 255 + 13 * 23);
     const user = userEvent.setup();
     const onExportCalendar = vi.fn();
     const onExportTasks = vi.fn();
@@ -222,22 +349,49 @@ describe('CalendarView', () => {
     const today = screen.getByRole('gridcell', { name: 'Thursday, October 15' });
     expect(today).toHaveClass('is-today');
 
+    const grid = screen.getByRole('grid');
+    const rows = (...px: number[]) => `auto ${px.map((p) => `minmax(${p}px, 1fr)`).join(' ')}`;
+    expect(grid).toHaveStyle({ height: `${255 + 13 * 23}px` });
+    expect(grid.style.gridTemplateRows).toBe(rows(82, 82, 82, 105, 82, 82));
+
     const busy = screen.getByRole('gridcell', { name: 'Tuesday, October 20' });
     expect(
       within(busy)
         .getAllByRole('link')
         .map((l) => l.textContent),
-    ).toEqual(['Medium thing', 'Low thing', 'Plain thing']);
-    await user.click(within(busy).getByRole('button', { name: '1 more' }));
+    ).toEqual(['Medium thing', 'Low thing']);
+    await user.click(within(busy).getByRole('button', { name: '2 more' }));
     expect(within(busy).getByRole('link', { name: 'Done thing (Low priority, done)' })).toHaveClass('is-done');
+    // The open day's week grows to fit every task and the "Show fewer" link.
+    expect(grid.style.gridTemplateRows).toBe(rows(82, 82, 82, 151, 82, 82));
+    expect(grid).toHaveStyle({ height: `${31 + 8 + 5 * 82 + 151}px` });
     await user.click(within(busy).getByRole('button', { name: 'Show fewer' }));
-    expect(within(busy).getAllByRole('link')).toHaveLength(3);
-    expect(within(busy).getByRole('link', { name: 'Plain thing' })).toBeInTheDocument();
+    expect(within(busy).getAllByRole('link')).toHaveLength(2);
+    expect(within(busy).getByRole('link', { name: 'Low thing (Low priority)' })).toBeInTheDocument();
+
+    // A taller window fits the whole day.
+    windowHeight(768);
+    act(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(within(busy).getAllByRole('link')).toHaveLength(4);
+    expect(within(busy).queryByRole('button')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Export calendar (.ics)' }));
     expect(onExportCalendar).toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Export tasks for Thunderbird (.ics)' }));
     expect(onExportTasks).toHaveBeenCalled();
+  });
+
+  it('stops following the window size when it closes', () => {
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const { unmount } = render(
+      <CalendarView tasks={calTasks()} now={NOW} onExportCalendar={vi.fn()} onExportTasks={vi.fn()} />,
+    );
+    act(() => {
+      unmount();
+    });
+    expect(remove).toHaveBeenCalledWith('resize', expect.any(Function));
   });
 
   it('moves between months', async () => {
@@ -353,7 +507,6 @@ describe('CalendarView', () => {
       render(<CalendarView tasks={tasks} now={NOW} onExportCalendar={vi.fn()} onExportTasks={vi.fn()} />);
       await user.click(screen.getByRole('button', { name: 'Completed' }));
       const day14 = screen.getByRole('gridcell', { name: 'Wednesday, October 14' });
-      await user.click(within(day14).getByRole('button', { name: '1 more' }));
       expect(
         within(day14)
           .getAllByRole('link')

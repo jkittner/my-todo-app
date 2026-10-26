@@ -3,6 +3,7 @@ import {
   addDays,
   dueDeadline,
   formatDateKey,
+  durationUnit,
   formatDuration,
   formatTimestamp,
   isDateKey,
@@ -63,6 +64,23 @@ describe('dates', () => {
     expect(formatDuration(5 * 3_600_000)).toBe('5 h');
     expect(formatDuration(86_400_000)).toBe('1 day');
     expect(formatDuration(2.54 * 86_400_000)).toBe('2.5 days');
+  });
+
+  it('picks a duration unit that fits the longest value', () => {
+    const H = 3_600_000;
+    const pick = (ms: number) => durationUnit(ms).name;
+    expect([0, 59 * 60_000, H, 47 * H, 48 * H, 400 * H].map(pick)).toEqual([
+      'minutes',
+      'minutes',
+      'hours',
+      'hours',
+      'days',
+      'days',
+    ]);
+    expect([12, 0.25].map(durationUnit(0).format)).toEqual(['12 min', '0.3 min']);
+    expect([3, 0.45].map(durationUnit(H).format)).toEqual(['3 h', '0.5 h']);
+    expect([1, 1.04, 2.54].map(durationUnit(48 * H).format)).toEqual(['1 day', '1 day', '2.5 days']);
+    expect(durationUnit(48 * H).ms).toBe(86_400_000);
   });
 
   it('formats dates relative to the current year', () => {

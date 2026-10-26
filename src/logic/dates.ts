@@ -64,6 +64,29 @@ export function formatDuration(ms: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
+export interface DurationUnit {
+  ms: number;
+  /** Axis caption, e.g. "hours". */
+  name: string;
+  /** Writes a value already in this unit, e.g. 2.5 → "2.5 h". */
+  format: (value: number) => string;
+}
+
+const round1 = (v: number) => Math.round(v * 10) / 10;
+const DURATION_UNITS: { upTo: number; unit: DurationUnit }[] = [
+  { upTo: 3_600_000, unit: { ms: 60_000, name: 'minutes', format: (v) => `${round1(v)} min` } },
+  { upTo: 2 * DAY_MS, unit: { ms: 3_600_000, name: 'hours', format: (v) => `${round1(v)} h` } },
+  {
+    upTo: Infinity,
+    unit: { ms: DAY_MS, name: 'days', format: (v) => `${round1(v)} ${round1(v) === 1 ? 'day' : 'days'}` },
+  },
+];
+
+/** The unit that reads best for durations up to `maxMs`: minutes under an hour, hours up to two days, then days. */
+export function durationUnit(maxMs: number): DurationUnit {
+  return (DURATION_UNITS.find((u) => maxMs < u.upTo) as (typeof DURATION_UNITS)[number]).unit;
+}
+
 const shortFmt = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
 const longFmt = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' });
 

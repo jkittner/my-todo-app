@@ -8716,7 +8716,7 @@
       ],
       "categories": [],
       "status": "done",
-      "createdAt": "2026-10-15T14:50:13.054Z",
+      "createdAt": "2026-10-15T12:50:13.054Z",
       "updatedAt": "2026-10-15T12:50:13.054Z",
       "startedAt": "2026-10-15T12:50:13.054Z",
       "completedAt": "2026-10-15T12:50:13.054Z",
@@ -8726,7 +8726,7 @@
       "statusHistory": [
         {
           "status": "todo",
-          "at": "2026-10-15T14:50:13.054Z"
+          "at": "2026-10-15T12:50:13.054Z"
         },
         {
           "status": "doing",
@@ -22943,8 +22943,8 @@
         "Learning"
       ],
       "status": "todo",
-      "createdAt": "2026-10-15T14:50:13.054Z",
-      "updatedAt": "2026-10-15T14:50:13.054Z",
+      "createdAt": "2026-10-15T12:50:13.054Z",
+      "updatedAt": "2026-10-15T12:50:13.054Z",
       "startedAt": null,
       "completedAt": null,
       "dueDate": "2026-11-13",
@@ -22953,7 +22953,7 @@
       "statusHistory": [
         {
           "status": "todo",
-          "at": "2026-10-15T14:50:13.054Z"
+          "at": "2026-10-15T12:50:13.054Z"
         }
       ]
     },

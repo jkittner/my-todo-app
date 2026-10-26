@@ -647,8 +647,56 @@ kbd {
   align-items: start;
 }
 
+/* Done hidden: two columns plus a narrow strip that still takes dropped cards. */
 .columns-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 56px;
+}
+
+.drop-strip {
+  position: relative;
+  display: block;
+  align-self: stretch;
+  width: 100%;
+  min-height: 160px;
+  padding: 0;
+  border: 2px dashed var(--rule-strong);
+  border-radius: var(--r-well);
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.drop-strip:hover {
+  background: var(--well);
+  color: var(--ink);
+}
+
+.drop-strip.is-drop-target {
+  background: var(--well-active);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* Kept in the middle of the strip's visible part by DropStrip as the page scrolls. */
+.drop-strip-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+  writing-mode: vertical-rl;
+}
+
+.drop-strip-label strong {
+  color: var(--ink);
+  font-size: 14px;
 }
 
 .column {
@@ -1495,6 +1543,96 @@ fieldset.field legend {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Box plots: label, shared-scale track, median. The axis row uses the same columns. */
+.box-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.box-list li,
+.box-axis {
+  display: grid;
+  grid-template-columns: minmax(80px, 30%) 1fr 64px;
+  align-items: center;
+  gap: 12px;
+}
+
+.box-track {
+  position: relative;
+  height: 20px;
+}
+
+.box-track > span {
+  position: absolute;
+}
+
+.box-grid {
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--rule);
+}
+
+.box-whisker {
+  top: 5px;
+  height: 10px;
+  border: solid var(--muted);
+  border-width: 0 1px;
+}
+
+.box-whisker::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 1px;
+  background: var(--muted);
+}
+
+.box {
+  top: 2px;
+  bottom: 2px;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--c-bar);
+}
+
+.box-median {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+
+.box-track:focus-visible {
+  outline-offset: 4px;
+}
+
+.box-axis {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.box-ticks {
+  grid-column: 2;
+  position: relative;
+  height: 16px;
+}
+
+.box-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
 }
 
 .columns-svg {
@@ -1649,6 +1787,11 @@ fieldset.field legend {
   margin: 10px 0 14px;
 }
 
+/* The month grid fills the window down to this padding (BOTTOM_GAP_PX in CalendarView). */
+.calendar-page {
+  padding-bottom: 24px;
+}
+
 .cal-grid {
   border: 1px solid var(--rule);
   border-radius: var(--r-well);
@@ -1670,16 +1813,17 @@ fieldset.field legend {
   background: var(--well);
   color: var(--muted);
   font-size: 13px;
+  line-height: 19px;
 }
 
 .cal-day {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-height: 112px;
   padding: 6px;
   background: var(--surface);
   min-width: 0;
+  overflow: hidden;
 }
 
 .cal-day.is-outside {
@@ -1691,6 +1835,7 @@ fieldset.field legend {
 }
 
 .cal-date {
+  flex: none;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   width: 24px;
@@ -1708,7 +1853,9 @@ fieldset.field legend {
 
 .cal-chip {
   display: block;
+  flex: none;
   padding: 2px 6px 2px 8px;
+  line-height: 16px;
   border-radius: 4px;
   background: var(--well);
   border-left: 3px solid var(--c-none);
@@ -1746,8 +1893,10 @@ fieldset.field legend {
 }
 
 .cal-more {
+  flex: none;
   align-self: start;
   font-size: 13px;
+  line-height: 20px;
   color: var(--muted);
 }
 
@@ -1783,6 +1932,7 @@ fieldset.field legend {
 .agenda .cal-chip {
   padding: 8px 10px;
   font-size: 14px;
+  line-height: 1.45;
   white-space: normal;
 }
 
@@ -1800,6 +1950,15 @@ fieldset.field legend {
 
   .column {
     min-height: 0;
+  }
+
+  .drop-strip {
+    min-height: 56px;
+  }
+
+  .drop-strip-label {
+    justify-content: center;
+    writing-mode: horizontal-tb;
   }
 }
 

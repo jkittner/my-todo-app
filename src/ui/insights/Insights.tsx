@@ -1,7 +1,8 @@
 import { PRIORITY_LABEL, STATUS_LABEL, STATUSES, type Task } from '../../model/task';
-import { formatDateKey, formatDuration, monthRange } from '../../logic/dates';
+import { durationUnit, formatDateKey, formatDuration, monthRange } from '../../logic/dates';
 import { isOverdue } from '../../logic/filter';
 import {
+  categoryCompletion,
   categoryCounts,
   flowSummary,
   PRIORITY_KEYS,
@@ -12,7 +13,17 @@ import {
   type PriorityKey,
 } from '../../logic/stats';
 import { routeHref } from '../common/hooks';
-import { BarList, ChartCard, GroupedColumns, Legend, ShareBar, SimpleTable, StackedRows, type Datum } from './charts';
+import {
+  BarList,
+  BoxPlotList,
+  ChartCard,
+  GroupedColumns,
+  Legend,
+  ShareBar,
+  SimpleTable,
+  StackedRows,
+  type Datum,
+} from './charts';
 
 const STATUS_COLOR = { todo: 'var(--c-todo)', doing: 'var(--c-doing)', done: 'var(--c-done)' };
 const PRIORITY_COLOR: Record<PriorityKey, string> = {
@@ -44,6 +55,23 @@ export function Insights({ tasks, now }: { tasks: Task[]; now: Date }) {
     label: c.label,
     value: c.count,
     color: 'var(--c-bar)',
+  }));
+  const completion = categoryCompletion(tasks);
+  // One unit for the whole chart, picked from the longest whisker: minutes, hours or days.
+  const unit = durationUnit(Math.max(0, ...completion.map((c) => c.box.high)));
+  const inUnit = (ms: number) => ms / unit.ms;
+  const duration = (ms: number) => unit.format(inUnit(ms));
+  const completionRows = completion.map((c) => ({
+    key: c.label,
+    label: c.label,
+    count: c.count,
+    box: {
+      low: inUnit(c.box.low),
+      q1: inUnit(c.box.q1),
+      median: inUnit(c.box.median),
+      q3: inUnit(c.box.q3),
+      high: inUnit(c.box.high),
+    },
   }));
   const pbs = priorityByStatus(tasks);
   const weekly = weeklyDoneVsOverdue(tasks, now);
@@ -122,6 +150,25 @@ export function Insights({ tasks, now }: { tasks: Task[]; now: Date }) {
           table={<SimpleTable head={['Category', 'Tasks']} rows={catData.map((d) => [d.label, d.value])} />}
         >
           <BarList data={catData} />
+        </ChartCard>
+
+        <ChartCard
+          title="Time to complete by category"
+          note="From moving a task to In progress to moving it to Done; tasks moved straight from To do are left out. The box spans the interquartile range (IQR) of finished tasks and the line in it is the median. Whiskers reach the furthest task within 1.5 × IQR of the box; tasks beyond them are left out. A task with several categories counts once in each."
+          table={
+            <SimpleTable
+              head={['Category', 'Median', 'Interquartile range', 'Whiskers', 'Finished tasks']}
+              rows={completion.map(({ label, box: b, count }) => [
+                label,
+                duration(b.median),
+                `${duration(b.q1)} to ${duration(b.q3)}`,
+                `${duration(b.low)} to ${duration(b.high)}`,
+                count,
+              ])}
+            />
+          }
+        >
+          <BoxPlotList rows={completionRows} unit={unit.name} format={unit.format} />
         </ChartCard>
 
         <ChartCard

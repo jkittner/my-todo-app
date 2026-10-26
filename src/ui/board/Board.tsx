@@ -5,7 +5,7 @@ import { sortTasks } from '../../logic/sort';
 import { DONE_WINDOW_DAYS, visibleDone } from '../../logic/doneWindow';
 import { summarize } from '../../logic/stats';
 import type { Prefs } from '../../store/storage';
-import { Column } from './Column';
+import { Column, DropStrip } from './Column';
 import { StatsLine } from './StatsLine';
 import { Toolbar } from './Toolbar';
 
@@ -89,7 +89,9 @@ export function Board({ tasks, tags, categories, prefs, now, savedId, onOpen, on
           onMove={onMove}
           empty={emptyNote('Drag a task here when you start working on it.')}
         />
-        {!prefs.hideDone && (
+        {prefs.hideDone ? (
+          <DropStrip status="done" onMove={onMove} onShow={() => onPrefs({ hideDone: false })} />
+        ) : (
           <Column
             status="done"
             tasks={done.shown}

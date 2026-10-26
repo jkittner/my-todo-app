@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { BoxStats } from '../../logic/stats';
 
 export interface Datum {
   key: string;
@@ -176,6 +177,80 @@ export function BarList({ data, unit = 'tasks' }: { data: Datum[]; unit?: string
   );
 }
 
+export interface BoxRow {
+  key: string;
+  label: string;
+  box: BoxStats;
+  /** Values the box is drawn from. */
+  count: number;
+}
+
+/**
+ * One horizontal box plot per row on a shared scale fitted to the whiskers: the box spans the IQR,
+ * the line in it is the median (also written at the row's end), and the whiskers stop at
+ * 1.5 × the box length. Values beyond the whiskers are not drawn.
+ */
+export function BoxPlotList({ rows, unit, format }: { rows: BoxRow[]; unit: string; format: (v: number) => string }) {
+  const { bind, node } = useTip();
+  // About four round steps, from just below the lowest whisker to just past the highest.
+  const lowest = Math.min(...rows.map((r) => r.box.low));
+  const highest = Math.max(...rows.map((r) => r.box.high));
+  const step = niceStep((highest - lowest) / 4 || Math.abs(highest) / 4 || 1);
+  const start = Math.floor(lowest / step);
+  const ticks = Array.from(
+    { length: Math.max(1, Math.ceil(highest / step) - start) + 1 },
+    // Rounded so steps like 0.2 don't print as 0.6000000000000001.
+    (_, i) => Number(((start + i) * step).toPrecision(12)),
+  );
+  const min = ticks[0];
+  const span = ticks[ticks.length - 1] - min;
+  const at = (v: number) => `${((v - min) / span) * 100}%`;
+  const length = (v: number) => `${(v / span) * 100}%`;
+  return (
+    <div class="chart-body">
+      {rows.length === 0 ? (
+        <p class="chart-empty">No completed tasks yet.</p>
+      ) : (
+        <>
+          <ul class="box-list">
+            {rows.map(({ key, label, box: b, count }) => (
+              <li key={key}>
+                <span class="bar-label">{label}</span>
+                <span
+                  class="box-track"
+                  {...bind(
+                    `${label}: median ${format(b.median)}, IQR ${format(b.q1)} to ${format(b.q3)}, ` +
+                      `whiskers ${format(b.low)} to ${format(b.high)}, ${count} ${count === 1 ? 'task' : 'tasks'}`,
+                  )}
+                >
+                  {ticks.map((t) => (
+                    <span key={t} class="box-grid" style={{ left: at(t) }} />
+                  ))}
+                  <span class="box-whisker" style={{ left: at(b.low), width: length(b.high - b.low) }} />
+                  <span class="box" style={{ left: at(b.q1), width: length(b.q3 - b.q1) }} />
+                  <span class="box-median" style={{ left: at(b.median) }} />
+                </span>
+                <span class="bar-value">{format(b.median)}</span>
+              </li>
+            ))}
+          </ul>
+          <div class="box-axis" aria-hidden="true">
+            <span class="box-ticks">
+              {ticks.map((t) => (
+                <span key={t} style={{ left: at(t) }}>
+                  {t}
+                </span>
+              ))}
+            </span>
+            <span>{unit}</span>
+          </div>
+        </>
+      )}
+      {node}
+    </div>
+  );
+}
+
 export interface StackRow {
   key: string;
   label: string;
@@ -230,6 +305,13 @@ const niceMax = (v: number) => {
   const n = Math.ceil(v / step);
   return (n <= 2 ? 2 : n <= 5 ? 5 : 10) * step;
 };
+
+/** A round step (1, 2 or 5 times a power of ten) of at least `v`, which must be above zero. */
+export function niceStep(v: number): number {
+  const p = 10 ** Math.floor(Math.log10(v));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
 
 /** Tracks an element's rendered width so SVG text stays at its real size. */
 function useWidth(fallback: number) {

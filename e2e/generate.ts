@@ -94,12 +94,13 @@ export function generateTasks(count: number, now: Date, seed = 42, share: Status
   ];
 
   return Array.from({ length: count }, (_, i) => {
-    const created = shift(now, -Math.floor(r() * 365), Math.floor(r() * 10));
+    const clamp = <D extends Date | null>(d: D) => (d && d > now ? now : d);
+    // Never in the future, or a task created today could be finished before it was created.
+    const created = clamp(shift(now, -Math.floor(r() * 365), Math.floor(r() * 10)));
     const roll = r();
     const status: Status = roll < share.todo ? 'todo' : roll < share.todo + share.doing ? 'doing' : 'done';
     const startedAt = status === 'todo' ? null : shift(created, r() * 20);
     const completedAt = status === 'done' && startedAt ? shift(startedAt, r() * 15) : null;
-    const clamp = (d: Date | null) => (d && d > now ? now : d);
     const started = clamp(startedAt);
     const completed = clamp(completedAt);
     const originalDue = shift(created, 1 + Math.floor(r() * 45));

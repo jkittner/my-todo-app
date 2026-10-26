@@ -39,6 +39,19 @@ export function taskStats(task: Task, now: Date): TaskStats {
   };
 }
 
+/** Time between two moments of one task; never negative, even for data with clock skew. */
+export function durationMs(from: string, to: string): number {
+  return Math.max(0, msBetween(from, to));
+}
+
+/**
+ * Moved straight from To do to Done, so never in progress: moving a task to Done sets its start
+ * to the same moment. Such a task has no wait or work time, and counting it as 0 would skew medians.
+ */
+export function skippedProgress(task: Task): boolean {
+  return task.startedAt !== null && task.startedAt === task.completedAt;
+}
+
 export function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const s = [...values].sort((a, b) => a - b);
@@ -63,7 +76,7 @@ export function summarize(tasks: Task[], now: Date): Summary {
     done: tasks.filter((t) => t.status === 'done').length,
     overdue: tasks.filter((t) => isOverdue(t, now)).length,
     dueThisWeek: tasks.filter((t) => isDueThisWeek(t, now)).length,
-    medianCompletionMs: median(done.map((t) => msBetween(t.createdAt, t.completedAt as string))),
+    medianCompletionMs: median(done.map((t) => durationMs(t.createdAt, t.completedAt as string))),
   };
 }
 
@@ -81,13 +94,13 @@ export interface FlowSummary {
 /** Aggregates the per-task statistics over finished work (and every task for reschedules). */
 export function flowSummary(tasks: Task[], now: Date): FlowSummary {
   const stats = tasks.map((t) => ({ t, s: taskStats(t, now) }));
-  const started = stats.filter(({ t }) => t.startedAt);
+  const started = stats.filter(({ t }) => t.startedAt && !skippedProgress(t));
   const finished = stats.filter(({ t }) => t.status === 'done' && t.startedAt && t.completedAt);
   const lateOrig = finished.filter(({ s }) => s.overdueOriginalMs > 0).map(({ s }) => s.overdueOriginalMs);
   const lateCur = finished.filter(({ s }) => s.overdueCurrentMs > 0).map(({ s }) => s.overdueCurrentMs);
   return {
     medianWaitMs: median(started.map(({ s }) => s.wait.ms)),
-    medianWorkMs: median(finished.map(({ s }) => (s.work as Span).ms)),
+    medianWorkMs: median(finished.filter(({ t }) => !skippedProgress(t)).map(({ s }) => (s.work as Span).ms)),
     lateVsOriginal: lateOrig.length,
     lateVsCurrent: lateCur.length,
     medianLateOriginalMs: median(lateOrig),
@@ -127,6 +140,63 @@ export function categoryCounts(tasks: Task[]): { label: string; count: number }[
   return [...counts]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/** Linear-interpolated quantile `p` (0 to 1) of ascending `sorted` values. */
+export function quantile(sorted: number[], p: number): number {
+  const i = (sorted.length - 1) * p;
+  const lo = Math.floor(i);
+  return sorted[lo] + (sorted[Math.ceil(i)] - sorted[lo]) * (i - lo);
+}
+
+/** Five numbers for a box plot. Whiskers stop at the furthest values within 1.5 × IQR of the box. */
+export interface BoxStats {
+  low: number;
+  q1: number;
+  median: number;
+  q3: number;
+  high: number;
+}
+
+export function boxStats(values: number[]): BoxStats {
+  const s = [...values].sort((a, b) => a - b);
+  const q1 = quantile(s, 0.25);
+  const q3 = quantile(s, 0.75);
+  const reach = 1.5 * (q3 - q1);
+  return {
+    low: s.find((v) => v >= q1 - reach) as number,
+    q1,
+    median: quantile(s, 0.5),
+    q3,
+    high: s.findLast((v) => v <= q3 + reach) as number,
+  };
+}
+
+export interface CategoryCompletion {
+  label: string;
+  box: BoxStats;
+  /** Finished tasks the box is drawn from. */
+  count: number;
+}
+
+/**
+ * Time from moving a task to In progress to finishing it, per category, over done tasks that were
+ * in progress. A task with several categories counts once in each. Slowest median first.
+ */
+export function categoryCompletion(tasks: Task[]): CategoryCompletion[] {
+  const spans = new Map<string, number[]>();
+  for (const t of tasks) {
+    if (t.status !== 'done' || !t.startedAt || !t.completedAt || skippedProgress(t)) continue;
+    const ms = durationMs(t.startedAt, t.completedAt);
+    for (const c of t.categories.length ? t.categories : [NO_CATEGORY]) {
+      const list = spans.get(c);
+      if (list) list.push(ms);
+      else spans.set(c, [ms]);
+    }
+  }
+  return [...spans]
+    .map(([label, ms]) => ({ label, box: boxStats(ms), count: ms.length }))
+    .sort((a, b) => b.box.median - a.box.median || a.label.localeCompare(b.label));
 }
 
 export function priorityByStatus(tasks: Task[]): Record<PriorityKey, Record<Status, number>> {

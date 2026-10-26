@@ -389,6 +389,70 @@ describe('Board', () => {
     expect(column('Done')).toBeInTheDocument();
   });
 
+  it('keeps a strip to drop finished tasks on while done is hidden', async () => {
+    const onMove = vi.fn();
+    render(<Harness onMove={onMove} initialPrefs={{ ...DEFAULT_PREFS, hideDone: true }} />);
+    expect(screen.queryByRole('region', { name: 'Done' })).toBeNull();
+    const strip = screen.getByRole('button', { name: 'Show done tasks' });
+    expect(strip).toHaveTextContent('Done Drop here');
+    const card = screen.getByRole('button', { name: /Book bike/ }).closest('li') as HTMLElement;
+    const dt = dataTransfer();
+    fireEvent.dragStart(card, { dataTransfer: dt });
+    fireEvent.dragOver(strip, { dataTransfer: dt });
+    expect(strip).toHaveClass('is-drop-target');
+    fireEvent.drop(strip, { dataTransfer: dt });
+    expect(strip).not.toHaveClass('is-drop-target');
+    expect(onMove).toHaveBeenCalledWith('bike', 'done');
+    expect(titles('To do')).not.toContain('Book bike service');
+
+    // Clicking the strip brings the done column back.
+    await userEvent.click(strip);
+    expect(titles('Done')).toContain('Book bike service');
+    expect(screen.getByLabelText('Hide done tasks')).not.toBeChecked();
+  });
+
+  it('keeps the strip label in the middle of the visible part of the strip', () => {
+    let rect = { top: 100, bottom: 2100, height: 2000 };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => rect as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(100);
+    let resized: () => void = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          resized = cb;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
+    const { unmount } = render(<Harness initialPrefs={{ ...DEFAULT_PREFS, hideDone: true }} />);
+    const label = document.querySelector('.drop-strip-label') as HTMLElement;
+    const moveTo = (top: number, height = 2000) => {
+      rect = { top, bottom: top + height, height };
+      act(() => {
+        window.dispatchEvent(new Event('scroll'));
+      });
+      return label.style.transform;
+    };
+    // The window is 768px tall: the visible part runs from 100 to 768.
+    expect(label.style.transform).toBe('translateY(284px)');
+    expect(moveTo(-1000)).toBe('translateY(1334px)');
+    // Never past either end of the strip.
+    expect(moveTo(-1950)).toBe('translateY(1900px)');
+    expect(moveTo(740)).toBe('translateY(0px)');
+    // The strip changes size with the columns beside it.
+    rect = { top: 0, bottom: 300, height: 300 };
+    act(() => resized());
+    expect(label.style.transform).toBe('translateY(100px)');
+    act(() => {
+      unmount();
+    });
+    expect(disconnect).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('invites the first task on an empty board', async () => {
     const onAdd = vi.fn();
     render(<Harness tasks={[]} onAdd={onAdd} />);
