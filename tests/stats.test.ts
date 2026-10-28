@@ -167,6 +167,14 @@ describe('chart series', () => {
     expect(boxStats([7])).toEqual({ low: 7, q1: 7, median: 7, q3: 7, high: 7 });
   });
 
+  it('keeps the box inside its whiskers when the quartiles fall between values', () => {
+    // Q3 is interpolated to 2.875, but no value lies within the fence above it: the whisker stops at the box edge.
+    const stats = boxStats([0.5, 0.5, 0.5, 10]);
+    expect(stats.high).toBeGreaterThanOrEqual(stats.q3);
+    expect(stats.low).toBeLessThanOrEqual(stats.q1);
+    expect(boxStats([1, 1, 1, 9])).toEqual({ low: 1, q1: 1, median: 1, q3: 3, high: 3 });
+  });
+
   it('never counts a negative time to complete', () => {
     // Imported data where the clock was off: finished two hours before it was started and created.
     const skewed = {

@@ -163,12 +163,14 @@ export function boxStats(values: number[]): BoxStats {
   const q1 = quantile(s, 0.25);
   const q3 = quantile(s, 0.75);
   const reach = 1.5 * (q3 - q1);
+  // Interpolated quartiles can sit between data points, so the furthest value inside the fence may
+  // fall short of the box edge. Clamping keeps the box inside its whiskers (and the chart's scale).
   return {
-    low: s.find((v) => v >= q1 - reach) as number,
+    low: Math.min(q1, s.find((v) => v >= q1 - reach) as number),
     q1,
     median: quantile(s, 0.5),
     q3,
-    high: s.findLast((v) => v <= q3 + reach) as number,
+    high: Math.max(q3, s.findLast((v) => v <= q3 + reach) as number),
   };
 }
 
