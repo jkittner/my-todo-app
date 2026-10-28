@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { Status, Task } from '../../model/task';
 import { EMPTY_FILTERS, filterTasks, hasActiveFilters, type Filters } from '../../logic/filter';
 import { sortTasks } from '../../logic/sort';
@@ -25,6 +25,14 @@ interface Props {
 export function Board({ tasks, tags, categories, prefs, now, savedId, onOpen, onAdd, onMove, onPrefs }: Props) {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [allDone, setAllDone] = useState(false);
+
+  // A tag or category deleted elsewhere can't stay selected in the filter.
+  useEffect(() => {
+    const liveTags = filters.tags.filter((t) => tags.includes(t));
+    const liveCategories = filters.categories.filter((c) => categories.includes(c));
+    if (liveTags.length !== filters.tags.length || liveCategories.length !== filters.categories.length)
+      setFilters((f) => ({ ...f, tags: liveTags, categories: liveCategories }));
+  }, [tags, categories, filters.tags, filters.categories]);
 
   const narrowed = hasActiveFilters(filters) || !!filters.query.trim();
   const doneMode = prefs.hideDone ? 'hidden' : allDone ? 'all' : 'recent';

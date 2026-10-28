@@ -2,6 +2,8 @@ import { useState } from 'preact/hooks';
 import {
   draftFromTask,
   emptyDraft,
+  sameLabel,
+  type LabelKey,
   PRIORITIES,
   PRIORITY_LABEL,
   STATUS_LABEL,
@@ -24,16 +26,30 @@ interface Props {
   initialStatus?: Status;
   knownTags: string[];
   knownCategories: string[];
+  /** How many tasks carry a tag or category, shown in the confirmation before it is deleted. */
+  labelUses: (key: LabelKey, name: string) => number;
   now: Date;
   onSave: (draft: TaskDraft) => void;
   onDelete: (id: string) => void;
+  onDeleteLabel: (key: LabelKey, name: string) => void;
   onClose: () => void;
 }
 
 const sameDraft = (a: TaskDraft, b: TaskDraft) => JSON.stringify(a) === JSON.stringify(b);
 
-export function TaskModal({ task, initialStatus, knownTags, knownCategories, now, onSave, onDelete, onClose }: Props) {
-  const [initial] = useState(() => (task ? draftFromTask(task) : emptyDraft(initialStatus)));
+export function TaskModal({
+  task,
+  initialStatus,
+  knownTags,
+  knownCategories,
+  labelUses,
+  now,
+  onSave,
+  onDelete,
+  onDeleteLabel,
+  onClose,
+}: Props) {
+  const [initial, setInitial] = useState(() => (task ? draftFromTask(task) : emptyDraft(initialStatus)));
   const [draft, setDraft] = useState(initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -42,6 +58,18 @@ export function TaskModal({ task, initialStatus, knownTags, knownCategories, now
   const set = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
     if (key in errors) setErrors((e) => ({ ...e, [key]: undefined }));
+  };
+
+  const deleteLabel = (key: LabelKey, name: string) => {
+    const noun = key === 'tags' ? 'tag' : 'category';
+    const uses = labelUses(key, name);
+    const effect = uses === 0 ? 'No task uses it.' : `It is removed from ${uses} ${uses === 1 ? 'task' : 'tasks'}.`;
+    if (!confirm(`Delete the ${noun} "${name}"? ${effect} This cannot be undone.\n\nAre you really sure?`)) return;
+    onDeleteLabel(key, name);
+    // The open form must not write the label back when it is saved or compared on close.
+    const without = (list: string[]) => list.filter((l) => !sameLabel(l, name));
+    setInitial((i) => ({ ...i, [key]: without(i[key]) }));
+    set(key, without(draft[key]));
   };
 
   const requestClose = () => {
@@ -138,6 +166,7 @@ export function TaskModal({ task, initialStatus, knownTags, knownCategories, now
             values={draft.tags}
             suggestions={knownTags}
             onChange={(v) => set('tags', v)}
+            onDeleteValue={(name) => deleteLabel('tags', name)}
           />
           <TokenInput
             label="Categories"
@@ -145,6 +174,7 @@ export function TaskModal({ task, initialStatus, knownTags, knownCategories, now
             values={draft.categories}
             suggestions={knownCategories}
             onChange={(v) => set('categories', v)}
+            onDeleteValue={(name) => deleteLabel('categories', name)}
           />
         </div>
 

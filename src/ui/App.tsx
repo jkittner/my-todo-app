@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'preact/hooks';
-import { STATUS_LABEL, type Status, type TaskDraft } from '../model/task';
+import { STATUS_LABEL, tasksWithLabel, type Status, type TaskDraft } from '../model/task';
 import { toDateKey } from '../logic/dates';
 import { serializeBackup, type Library } from '../io/backup';
 import { exportCalendarIcs, exportTasksIcs } from '../io/ical';
@@ -216,9 +216,11 @@ export function App({ load = loadDb, save = saveDb, folderDeps }: Props) {
           task={adding ? null : editing}
           knownTags={db.tags}
           knownCategories={db.categories}
+          labelUses={(key, name) => tasksWithLabel(db.tasks, key, name).length}
           now={now}
           onSave={saveDraft}
           onDelete={remove}
+          onDeleteLabel={(key, name) => dispatch({ type: 'deleteLabel', key, name })}
           onClose={closeModal}
         />
       )}

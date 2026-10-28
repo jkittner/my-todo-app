@@ -8,11 +8,22 @@ import {
   emptyDraft,
   moveTask,
   newId,
+  tasksWithLabel,
   validateDraft,
 } from '../src/model/task';
 import { at, day, makeTask, walk } from './helpers';
 
 describe('task model', () => {
+  it('finds the tasks that carry a tag or category, whatever its case', () => {
+    const tasks = [
+      makeTask({ id: 'a', tags: ['urgent'], categories: ['work'] }),
+      makeTask({ id: 'b', tags: ['Home'], categories: ['Home'] }),
+    ];
+    expect(tasksWithLabel(tasks, 'categories', 'Work').map((t) => t.id)).toEqual(['a']);
+    expect(tasksWithLabel(tasks, 'tags', 'URGENT').map((t) => t.id)).toEqual(['a']);
+    expect(tasksWithLabel(tasks, 'tags', 'Gym')).toEqual([]);
+  });
+
   it('requires a title and a valid due date', () => {
     expect(validateDraft(emptyDraft())).toEqual({ title: 'Enter a title.', dueDate: 'Pick a due date.' });
     expect(validateDraft({ ...emptyDraft(), title: '   ', dueDate: '2026-13-01' })).toEqual({

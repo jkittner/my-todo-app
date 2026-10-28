@@ -9,9 +9,22 @@ import { TaskModal } from '../src/ui/task/TaskModal';
 import { changeDueDate } from '../src/model/task';
 import { at, day, makeTask, NOW, walk } from './helpers';
 
-function Tokens({ initial = [] as string[], suggestions = ['Home', 'Work'] }) {
+function Tokens({
+  initial = [] as string[],
+  suggestions = ['Home', 'Work'],
+  onDeleteValue = undefined as ((name: string) => void) | undefined,
+}) {
   const [values, setValues] = useState(initial);
-  return <TokenInput label="Tags" noun="tag" values={values} suggestions={suggestions} onChange={setValues} />;
+  return (
+    <TokenInput
+      label="Tags"
+      noun="tag"
+      values={values}
+      suggestions={suggestions}
+      onChange={setValues}
+      onDeleteValue={onDeleteValue}
+    />
+  );
 }
 
 const tokens = () =>
@@ -38,6 +51,36 @@ describe('TokenInput', () => {
     expect(tokens()).toEqual([]);
     await user.keyboard('{Backspace}');
     expect(tokens()).toEqual([]);
+  });
+
+  it('opens a menu on right-click of a label, and deletes only from the menu', async () => {
+    const onDeleteValue = vi.fn();
+    render(<Tokens initial={['Home']} onDeleteValue={onDeleteValue} />);
+    expect(screen.getByText(/Right-click a tag to delete it/)).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText('Home'));
+    expect(onDeleteValue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete tag' }));
+    expect(onDeleteValue).toHaveBeenCalledWith('Home');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('closes the menu on Escape or a press outside it, and has none without a delete handler', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Tokens initial={['Home']} onDeleteValue={vi.fn()} />);
+    fireEvent.contextMenu(screen.getByText('Home'));
+    await user.keyboard('a');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.contextMenu(screen.getByText('Home'));
+    await user.click(screen.getByLabelText('Tags'));
+    expect(screen.queryByRole('menu')).toBeNull();
+    unmount();
+
+    render(<Tokens initial={['Home']} />);
+    expect(screen.queryByText(/Right-click/)).toBeNull();
+    fireEvent.contextMenu(screen.getByText('Home'));
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('commits typed text on blur and adds picked suggestions at once', async () => {
@@ -148,6 +191,76 @@ describe('Timeline', () => {
     expect(v['Against current due date (Oct 14)']).toMatch(/late so far$/);
     expect(v['Due date changes']).toBe('Changed 2 times');
   });
+
+  it('asks before deleting a category from the menu, and keeps it out of the open task', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ title: 'Keep me', categories: ['Work', 'Home'], dueDate: day(2) });
+    const p = setup(task);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    fireEvent.contextMenu(screen.getByText('Work'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(confirm).toHaveBeenLastCalledWith(
+      'Delete the category "Work"? It is removed from 2 tasks. This cannot be undone.\n\nAre you really sure?',
+    );
+    // Cancelled: nothing changes.
+    expect(p.onDeleteLabel).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Remove category Work' })).toBeInTheDocument();
+
+    fireEvent.contextMenu(screen.getByText('Work'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(p.onDeleteLabel).toHaveBeenCalledWith('categories', 'Work');
+    expect(screen.queryByRole('button', { name: 'Remove category Work' })).toBeNull();
+    // Saving sends only the remaining categories.
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(p.onSave).toHaveBeenCalledWith(expect.objectContaining({ categories: ['Home'] }));
+  });
+
+  it('does not ask to discard after deleting a category that was the only change', async () => {
+    const user = userEvent.setup();
+    const task = makeTask({ categories: ['Work'], dueDate: day(2) });
+    const p = setup(task);
+    // Unticked, then typed back in: the saved copy still has it, the draft now does too.
+    await user.click(screen.getByRole('button', { name: 'Remove category Work' }));
+    await user.type(screen.getByLabelText('Categories'), 'Work{Enter}');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    fireEvent.contextMenu(screen.getByText('Work'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(p.onDeleteLabel).toHaveBeenCalledWith('categories', 'Work');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // Only the delete confirmation was asked, never the discard prompt.
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(p.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before deleting a tag from the menu', async () => {
+    const user = userEvent.setup();
+    const p = setup(makeTask({ tags: ['finance'], dueDate: day(2) }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    fireEvent.contextMenu(screen.getByText('finance'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete tag' }));
+    expect(confirm).toHaveBeenCalledWith(
+      'Delete the tag "finance"? It is removed from 2 tasks. This cannot be undone.\n\nAre you really sure?',
+    );
+    expect(p.onDeleteLabel).toHaveBeenCalledWith('tags', 'finance');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(p.onSave).toHaveBeenCalledWith(expect.objectContaining({ tags: [] }));
+  });
+
+  it('says when no task uses a category being deleted', async () => {
+    const user = userEvent.setup();
+    const p = setup(makeTask({ categories: ['Work'] }));
+    // Cancelled first, so the token is still there for the second attempt.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    p.labelUses.mockReturnValue(0);
+    fireEvent.contextMenu(screen.getByText('Work'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(confirm.mock.calls[0][0]).toContain('No task uses it.');
+    p.labelUses.mockReturnValue(1);
+    fireEvent.contextMenu(screen.getByText('Work'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(confirm.mock.calls[1][0]).toContain('It is removed from 1 task.');
+    expect(p.onDeleteLabel).toHaveBeenCalledTimes(1);
+  });
 });
 
 function setup(task = null as ReturnType<typeof makeTask> | null) {
@@ -155,9 +268,11 @@ function setup(task = null as ReturnType<typeof makeTask> | null) {
     task,
     knownTags: ['finance'],
     knownCategories: ['Work'],
+    labelUses: vi.fn(() => 2),
     now: NOW,
     onSave: vi.fn(),
     onDelete: vi.fn(),
+    onDeleteLabel: vi.fn(),
     onClose: vi.fn(),
   };
   render(<TaskModal {...props} />);

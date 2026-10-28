@@ -273,6 +273,29 @@ describe('reducer', () => {
   const base = emptyDb();
   const draft = { ...emptyDraft(), title: 'New', tags: ['t'], categories: ['c'], dueDate: day(1) };
 
+  it('deletes a category from the list and from every task that had it', () => {
+    const db = {
+      ...base,
+      categories: ['Work', 'Home'],
+      tasks: [makeTask({ id: 'a', categories: ['work', 'Home'] }), makeTask({ id: 'b', categories: ['Home'] })],
+    };
+    const next = reducer(db, { type: 'deleteLabel', key: 'categories', name: 'Work' });
+    expect(next.categories).toEqual(['Home']);
+    expect(next.tasks.map((t) => t.categories)).toEqual([['Home'], ['Home']]);
+    expect(next.tasks[1]).toBe(db.tasks[1]);
+  });
+
+  it('deletes a tag from the list and from every task that had it', () => {
+    const db = {
+      ...base,
+      tags: ['Home', 'urgent'],
+      tasks: [makeTask({ id: 'a', tags: ['URGENT'] }), makeTask({ id: 'b', tags: ['home'] })],
+    };
+    const next = reducer(db, { type: 'deleteLabel', key: 'tags', name: 'urgent' });
+    expect(next.tags).toEqual(['Home']);
+    expect(next.tasks.map((t) => t.tags)).toEqual([[], ['home']]);
+  });
+
   it('adds, updates, moves and deletes tasks', () => {
     let db = reducer(base, { type: 'add', draft, now: NOW, id: 'n' });
     expect(db.tasks).toHaveLength(1);

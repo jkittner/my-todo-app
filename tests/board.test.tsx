@@ -293,6 +293,55 @@ describe('Board', () => {
     expect(screen.queryByLabelText('then by (level 2)')).toBeNull();
   });
 
+  it('drops a category from the filter once it is deleted', async () => {
+    const user = userEvent.setup();
+    const board = (categories: string[]) => (
+      <Board
+        tasks={sample()}
+        tags={[]}
+        categories={categories}
+        prefs={DEFAULT_PREFS}
+        now={NOW}
+        savedId={null}
+        onOpen={vi.fn()}
+        onAdd={vi.fn()}
+        onMove={vi.fn()}
+        onPrefs={vi.fn()}
+      />
+    );
+    const { rerender } = render(board(['Home', 'Work']));
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.click(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: 'Home' }));
+    expect(titles('To do')).toEqual(['Book bike service']);
+    rerender(board(['Work']));
+    expect(titles('To do')).toEqual(['Send invoice', 'Collect receipts', 'Book bike service']);
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
+  });
+
+  it('drops a tag from the filter once it is deleted', async () => {
+    const user = userEvent.setup();
+    const board = (tags: string[]) => (
+      <Board
+        tasks={sample()}
+        tags={tags}
+        categories={[]}
+        prefs={DEFAULT_PREFS}
+        now={NOW}
+        savedId={null}
+        onOpen={vi.fn()}
+        onAdd={vi.fn()}
+        onMove={vi.fn()}
+        onPrefs={vi.fn()}
+      />
+    );
+    const { rerender } = render(board(['finance']));
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.click(within(screen.getByRole('group', { name: 'Filters' })).getByRole('button', { name: 'finance' }));
+    expect(titles('To do')).toEqual(['Send invoice', 'Collect receipts']);
+    rerender(board([]));
+    expect(titles('To do')).toEqual(['Send invoice', 'Collect receipts', 'Book bike service']);
+  });
+
   it('filters by tags, categories and date ranges', async () => {
     const user = userEvent.setup();
     render(<Harness />);

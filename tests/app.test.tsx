@@ -140,6 +140,44 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: /Send invoice/ })).toBeNull();
   });
 
+  it('deletes a category from the task form after confirmation', async () => {
+    const user = userEvent.setup();
+    const db = seeded();
+    const { save } = start({
+      ...db,
+      categories: ['Work'],
+      tasks: [{ ...db.tasks[0], categories: ['Work'] }, db.tasks[1]],
+    });
+    await go('#/board?task=inv');
+    const dialog = await screen.findByRole('dialog', { name: 'Edit task' });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.contextMenu(within(dialog).getByText('Work'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete category' }));
+    expect(confirm.mock.calls[0][0]).toContain('It is removed from 1 task.');
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await vi.waitFor(() => expect(location.hash).toBe('#/board'));
+    const saved = lastSaved(save);
+    expect(saved.categories).toEqual([]);
+    expect(saved.tasks.find((t) => t.id === 'inv')?.categories).toEqual([]);
+  });
+
+  it('deletes a tag from the task form after confirmation', async () => {
+    const user = userEvent.setup();
+    const db = seeded();
+    const { save } = start({ ...db, tasks: [{ ...db.tasks[0], tags: ['finance'] }, db.tasks[1]] });
+    await go('#/board?task=inv');
+    const dialog = await screen.findByRole('dialog', { name: 'Edit task' });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.contextMenu(within(dialog).getByText('finance'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete tag' }));
+    expect(confirm.mock.calls[0][0]).toContain('Delete the tag "finance"? It is removed from 1 task.');
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await vi.waitFor(() => expect(location.hash).toBe('#/board'));
+    const saved = lastSaved(save);
+    expect(saved.tags).toEqual([]);
+    expect(saved.tasks.find((t) => t.id === 'inv')?.tags).toEqual([]);
+  });
+
   it('reports links to tasks that no longer exist', async () => {
     start();
     await go('#/insights?task=gone');

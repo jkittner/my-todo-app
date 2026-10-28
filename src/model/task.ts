@@ -89,6 +89,17 @@ export function newId(): string {
 }
 
 /** Normalises a list of labels: trims, drops empties and case-insensitive duplicates. */
+/** Labels match regardless of case, as they do when cleaned. */
+export const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** The two kinds of label a task carries. */
+export type LabelKey = 'tags' | 'categories';
+
+/** Tasks that carry the label `name` under `key`. */
+export function tasksWithLabel(tasks: Task[], key: LabelKey, name: string): Task[] {
+  return tasks.filter((t) => t[key].some((l) => sameLabel(l, name)));
+}
+
 export function cleanLabels(labels: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
