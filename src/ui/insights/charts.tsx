@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { DAY_MS, HOUR_MS, MINUTE_MS, MONTH_MS, YEAR_MS } from '../../logic/dates';
 import type { BoxStats } from '../../logic/stats';
 
 export interface Datum {
@@ -185,33 +186,94 @@ export interface BoxRow {
   count: number;
 }
 
+/** Round durations for axis steps, from a minute to a century. */
+const NICE_STEPS_MS = [
+  ...[1, 2, 5, 10, 15, 30].map((m) => m * MINUTE_MS),
+  ...[1, 2, 3, 4, 6, 8, 12].map((h) => h * HOUR_MS),
+  ...[1, 2, 3, 7, 14].map((d) => d * DAY_MS),
+  ...[1, 2, 3, 6].map((m) => m * MONTH_MS),
+  ...[1, 2, 5, 10, 20, 50, 100].map((y) => y * YEAR_MS),
+];
+
+/** Round steps giving about four ticks from at or below `lo` to at or above `hi`. */
+export function linearTicks(lo: number, hi: number): number[] {
+  // A single value gets a step from its size, so the axis still has a scale.
+  const span = hi - lo || Math.abs(hi) || MINUTE_MS;
+  const step = NICE_STEPS_MS.find((s) => s >= span / 4) as number;
+  const start = Math.floor(lo / step);
+  return Array.from({ length: Math.max(1, Math.ceil(hi / step) - start) + 1 }, (_, i) => (start + i) * step);
+}
+
+/**
+ * Log axis ticks: the floor itself first (drawn as 0), then round durations above it up to the first
+ * one at or above `hi`. A tick closer than a decade to the previous one is left out so labels don't
+ * collide; the last tick is kept in its place by dropping the one before it if needed.
+ */
+export function logTicks(floor: number, hi: number): number[] {
+  const minGap = 1;
+  const ticks = [floor];
+  for (const c of NICE_STEPS_MS) {
+    if (c <= floor) continue;
+    if (c >= hi) {
+      if (ticks.length > 1 && Math.log10(c / ticks[ticks.length - 1]) < minGap) ticks.pop();
+      ticks.push(c);
+      break;
+    }
+    if (Math.log10(c / ticks[ticks.length - 1]) >= minGap) ticks.push(c);
+  }
+  return ticks;
+}
+
 /**
  * One horizontal box plot per row on a shared scale fitted to the whiskers: the box spans the IQR,
  * the line in it is the median (also written at the row's end), and the whiskers stop at
  * 1.5 × the box length. Values beyond the whiskers are not drawn.
+ * Values are durations in ms. The scale is linear unless switched to log, where values below
+ * `logFloor` are drawn at it.
  */
-export function BoxPlotList({ rows, unit, format }: { rows: BoxRow[]; unit: string; format: (v: number) => string }) {
+export function BoxPlotList({
+  rows,
+  format,
+  logFloor,
+}: {
+  rows: BoxRow[];
+  format: (ms: number) => string;
+  logFloor: number;
+}) {
   const { bind, node } = useTip();
-  // About four round steps, from just below the lowest whisker to just past the highest.
+  const [log, setLog] = useState(false);
   const lowest = Math.min(...rows.map((r) => r.box.low));
   const highest = Math.max(...rows.map((r) => r.box.high));
-  const step = niceStep((highest - lowest) / 4 || Math.abs(highest) / 4 || 1);
-  const start = Math.floor(lowest / step);
-  const ticks = Array.from(
-    { length: Math.max(1, Math.ceil(highest / step) - start) + 1 },
-    // Rounded so steps like 0.2 don't print as 0.6000000000000001.
-    (_, i) => Number(((start + i) * step).toPrecision(12)),
-  );
-  const min = ticks[0];
-  const span = ticks[ticks.length - 1] - min;
-  const at = (v: number) => `${((v - min) / span) * 100}%`;
-  const length = (v: number) => `${(v / span) * 100}%`;
+  const scale = log ? (v: number) => Math.log10(Math.max(v, logFloor)) : (v: number) => v;
+  const ticks = log ? logTicks(logFloor, Math.max(highest, logFloor)) : linearTicks(lowest, highest);
+  // The log axis starts at the floor, which reads as 0: a visual anchor, not a value.
+  const label = (t: number, i: number) => (log && i === 0 ? '0' : format(t));
+  const min = scale(ticks[0]);
+  const span = scale(ticks[ticks.length - 1]) - min;
+  const at = (v: number) => `${((scale(v) - min) / span) * 100}%`;
+  const extent = (from: number, to: number) => `${((scale(to) - scale(from)) / span) * 100}%`;
   return (
     <div class="chart-body">
       {rows.length === 0 ? (
         <p class="chart-empty">No completed tasks yet.</p>
       ) : (
         <>
+          <div class="segmented box-scale" role="group" aria-label="Axis scale">
+            {[
+              { key: false, label: 'Linear' },
+              { key: true, label: 'Log' },
+            ].map((s) => (
+              <button
+                key={s.label}
+                type="button"
+                class="segment-button"
+                aria-pressed={log === s.key}
+                onClick={() => setLog(s.key)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
           <ul class="box-list">
             {rows.map(({ key, label, box: b, count }) => (
               <li key={key}>
@@ -226,8 +288,8 @@ export function BoxPlotList({ rows, unit, format }: { rows: BoxRow[]; unit: stri
                   {ticks.map((t) => (
                     <span key={t} class="box-grid" style={{ left: at(t) }} />
                   ))}
-                  <span class="box-whisker" style={{ left: at(b.low), width: length(b.high - b.low) }} />
-                  <span class="box" style={{ left: at(b.q1), width: length(b.q3 - b.q1) }} />
+                  <span class="box-whisker" style={{ left: at(b.low), width: extent(b.low, b.high) }} />
+                  <span class="box" style={{ left: at(b.q1), width: extent(b.q1, b.q3) }} />
                   <span class="box-median" style={{ left: at(b.median) }} />
                 </span>
                 <span class="bar-value">{format(b.median)}</span>
@@ -236,13 +298,12 @@ export function BoxPlotList({ rows, unit, format }: { rows: BoxRow[]; unit: stri
           </ul>
           <div class="box-axis" aria-hidden="true">
             <span class="box-ticks">
-              {ticks.map((t) => (
+              {ticks.map((t, i) => (
                 <span key={t} style={{ left: at(t) }}>
-                  {t}
+                  {label(t, i)}
                 </span>
               ))}
             </span>
-            <span>{unit}</span>
           </div>
         </>
       )}

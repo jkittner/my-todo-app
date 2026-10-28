@@ -1,5 +1,5 @@
 import { PRIORITY_LABEL, STATUS_LABEL, STATUSES, type Task } from '../../model/task';
-import { durationUnit, formatDateKey, formatDuration, monthRange } from '../../logic/dates';
+import { formatDateKey, formatDuration, humanDuration, MINUTE_MS, monthRange } from '../../logic/dates';
 import { isOverdue } from '../../logic/filter';
 import {
   categoryCompletion,
@@ -57,22 +57,7 @@ export function Insights({ tasks, now }: { tasks: Task[]; now: Date }) {
     color: 'var(--c-bar)',
   }));
   const completion = categoryCompletion(tasks);
-  // One unit for the whole chart, picked from the longest whisker: minutes, hours or days.
-  const unit = durationUnit(Math.max(0, ...completion.map((c) => c.box.high)));
-  const inUnit = (ms: number) => ms / unit.ms;
-  const duration = (ms: number) => unit.format(inUnit(ms));
-  const completionRows = completion.map((c) => ({
-    key: c.label,
-    label: c.label,
-    count: c.count,
-    box: {
-      low: inUnit(c.box.low),
-      q1: inUnit(c.box.q1),
-      median: inUnit(c.box.median),
-      q3: inUnit(c.box.q3),
-      high: inUnit(c.box.high),
-    },
-  }));
+  const completionRows = completion.map((c) => ({ key: c.label, label: c.label, count: c.count, box: c.box }));
   const pbs = priorityByStatus(tasks);
   const weekly = weeklyDoneVsOverdue(tasks, now);
   const flow = flowSummary(tasks, now);
@@ -160,15 +145,15 @@ export function Insights({ tasks, now }: { tasks: Task[]; now: Date }) {
               head={['Category', 'Median', 'Interquartile range', 'Whiskers', 'Finished tasks']}
               rows={completion.map(({ label, box: b, count }) => [
                 label,
-                duration(b.median),
-                `${duration(b.q1)} to ${duration(b.q3)}`,
-                `${duration(b.low)} to ${duration(b.high)}`,
+                humanDuration(b.median),
+                `${humanDuration(b.q1)} to ${humanDuration(b.q3)}`,
+                `${humanDuration(b.low)} to ${humanDuration(b.high)}`,
                 count,
               ])}
             />
           }
         >
-          <BoxPlotList rows={completionRows} unit={unit.name} format={unit.format} />
+          <BoxPlotList rows={completionRows} format={humanDuration} logFloor={MINUTE_MS} />
         </ChartCard>
 
         <ChartCard

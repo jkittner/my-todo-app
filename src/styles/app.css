@@ -1546,6 +1546,11 @@ fieldset.field legend {
 }
 
 /* Box plots: label, shared-scale track, median. The axis row uses the same columns. */
+.box-scale {
+  width: fit-content;
+  margin: 0 0 10px auto;
+}
+
 .box-list {
   display: flex;
   flex-direction: column;

@@ -2,11 +2,20 @@ import { act, fireEvent, render, screen, within } from '@testing-library/preact'
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Insights } from '../src/ui/insights/Insights';
-import { BarList, BoxPlotList, columnPath, GroupedColumns, niceStep, ShareBar } from '../src/ui/insights/charts';
+import {
+  BarList,
+  BoxPlotList,
+  columnPath,
+  GroupedColumns,
+  logTicks,
+  niceStep,
+  ShareBar,
+} from '../src/ui/insights/charts';
 import { calendarDay, CalendarView, fitLines, monthGrid, weekLines } from '../src/ui/calendar/CalendarView';
 import { DataMenu } from '../src/ui/data/DataMenu';
 import { serializeBackup } from '../src/io/backup';
 import { changeDueDate } from '../src/model/task';
+import { DAY_MS, HOUR_MS, humanDuration, MINUTE_MS } from '../src/logic/dates';
 import { at, day, makeTask, NOW, walk } from './helpers';
 import { media } from './setup';
 
@@ -97,18 +106,16 @@ describe('Insights', () => {
     const ticks = () => [...card().querySelectorAll('.box-ticks span')].map((t) => t.textContent);
 
     const { rerender } = render(<Insights tasks={[1, 2, 3, 5, 8].map((h) => done('Work', h))} now={NOW} />);
-    expect(ticks()).toEqual(['0', '2', '4', '6', '8']);
-    expect(card().querySelector('.box-axis')).toHaveTextContent('hours');
+    expect(ticks()).toEqual(['0', '2 h', '4 h', '6 h', '8 h']);
     expect(
       within(card()).getByLabelText('Work: median 3 h, IQR 2 h to 5 h, whiskers 1 h to 8 h, 5 tasks'),
     ).toBeInTheDocument();
     expect(within(card()).getByRole('row', { name: 'Work 3 h 2 h to 5 h 1 h to 8 h 5' })).toBeInTheDocument();
 
     rerender(<Insights tasks={[6, 12, 18, 30].map((m) => done('Quick', m / 60))} now={NOW} />);
-    expect(ticks()).toEqual(['0', '10', '20', '30']);
-    expect(card().querySelector('.box-axis')).toHaveTextContent('minutes');
+    expect(ticks()).toEqual(['0', '10 min', '20 min', '30 min']);
     expect(
-      within(card()).getByLabelText('Quick: median 15 min, IQR 10.5 min to 21 min, whiskers 6 min to 30 min, 4 tasks'),
+      within(card()).getByLabelText('Quick: median 15 min, IQR 11 min to 21 min, whiskers 6 min to 30 min, 4 tasks'),
     ).toBeInTheDocument();
   });
 
@@ -141,6 +148,14 @@ describe('Insights', () => {
   });
 });
 
+const box = (low: number, q1: number, median: number, q3: number, high: number) => ({
+  low: low * DAY_MS,
+  q1: q1 * DAY_MS,
+  median: median * DAY_MS,
+  q3: q3 * DAY_MS,
+  high: high * DAY_MS,
+});
+
 describe('chart parts', () => {
   const data = [
     { key: 'a', label: 'Alpha', value: 3, color: 'red' },
@@ -169,31 +184,32 @@ describe('chart parts', () => {
   it('draws box plots on a shared scale from zero', () => {
     const { container } = render(
       <BoxPlotList
-        unit="days"
-        format={(v) => `${v} d`}
+        format={humanDuration}
+        logFloor={MINUTE_MS}
         rows={[
-          { key: 'a', label: 'Alpha', count: 5, box: { low: 1, q1: 2, median: 3, q3: 4, high: 8 } },
-          { key: 'b', label: 'Beta', count: 1, box: { low: 0.5, q1: 0.5, median: 0.5, q3: 0.5, high: 0.5 } },
+          { key: 'a', label: 'Alpha', count: 5, box: box(1, 2, 3, 4, 8) },
+          { key: 'b', label: 'Beta', count: 1, box: box(0.5, 0.5, 0.5, 0.5, 0.5) },
         ]}
       />,
     );
-    // Whiskers run from 0.5 to 8: steps of 2 from 0 to 8.
-    const alpha = screen.getByLabelText('Alpha: median 3 d, IQR 2 d to 4 d, whiskers 1 d to 8 d, 5 tasks');
+    // Whiskers run from 1 to 8 days: steps of 2 days from 0 to 8.
+    const alpha = screen.getByLabelText(
+      'Alpha: median 3 days, IQR 2 days to 4 days, whiskers 1 day to 8 days, 5 tasks',
+    );
     expect(alpha.querySelector('.box-whisker')).toHaveStyle({ left: '12.5%', width: '87.5%' });
     expect(alpha.querySelector('.box')).toHaveStyle({ left: '25%', width: '25%' });
     expect(alpha.querySelector('.box-median')).toHaveStyle({ left: '37.5%' });
     expect(
-      screen.getByLabelText('Beta: median 0.5 d, IQR 0.5 d to 0.5 d, whiskers 0.5 d to 0.5 d, 1 task'),
+      screen.getByLabelText('Beta: median 12 h, IQR 12 h to 12 h, whiskers 12 h to 12 h, 1 task'),
     ).toBeInTheDocument();
-    expect(screen.getByText('3 d')).toHaveClass('bar-value');
+    expect(screen.getByText('3 days')).toHaveClass('bar-value');
     expect([...container.querySelectorAll('.box-ticks span')].map((t) => t.textContent)).toEqual([
       '0',
-      '2',
-      '4',
-      '6',
-      '8',
+      '2 days',
+      '4 days',
+      '6 days',
+      '8 days',
     ]);
-    expect(container.querySelector('.box-axis')).toHaveTextContent('days');
   });
 
   it('fits box plot scales to the lowest and highest whisker shown', () => {
@@ -202,25 +218,73 @@ describe('chart parts', () => {
         key: `r${i}`,
         label: `R${i}`,
         count: 1,
-        box: { low, q1: low, median: low, q3: high, high },
+        box: { low: low * DAY_MS, q1: low * DAY_MS, median: low * DAY_MS, q3: high * DAY_MS, high: high * DAY_MS },
       }));
-      const { container, unmount } = render(<BoxPlotList unit="days" format={String} rows={rows} />);
-      const ticks = [...container.querySelectorAll('.box-ticks span')].map((t) => Number(t.textContent));
+      const { container, unmount } = render(<BoxPlotList format={humanDuration} logFloor={MINUTE_MS} rows={rows} />);
+      const ticks = [...container.querySelectorAll('.box-ticks span')].map((t) => t.textContent);
       const whisker = container.querySelector('.box-whisker') as HTMLElement;
-      const place = [whisker.style.left, whisker.style.width];
+      const place = [parseFloat(whisker.style.left), parseFloat(whisker.style.width)];
       act(() => {
         unmount();
       });
       return { ticks, place };
     };
-    // Starts below the lowest whisker, not at zero.
-    expect(scale([12, 33], [15, 20])).toEqual({ ticks: [10, 20, 30, 40], place: ['6.666666666666667%', '70%'] });
-    expect(scale([0, 170])).toEqual({ ticks: [0, 50, 100, 150, 200], place: ['0%', '85%'] });
-    // Small ranges get small steps.
-    expect(scale([0.25, 0.9]).ticks).toEqual([0.2, 0.4, 0.6, 0.8, 1]);
-    // All values equal: a step around the value, or a unit step at zero.
-    expect(scale([9, 9]).ticks).toEqual([5, 10]);
-    expect(scale([0, 0]).ticks).toEqual([0, 1]);
+    // Starts below the lowest whisker, not at zero: 12 to 35 days in steps of a week.
+    const { ticks, place } = scale([12, 33], [15, 20]);
+    expect(ticks).toEqual(['7 days', '14 days', '21 days', '28 days', '35 days']);
+    expect(place[0]).toBeCloseTo((5 / 28) * 100);
+    expect(place[1]).toBeCloseTo((21 / 28) * 100);
+    // From zero, in steps of two months.
+    expect(scale([0, 170]).ticks).toEqual(['0', '2 months', '4 months', '6 months']);
+    // Small ranges get hour steps.
+    expect(scale([0.25, 0.9]).ticks).toEqual(['4 h', '8 h', '12 h', '16 h', '20 h', '1 day']);
+    // All values equal: a step around the value, or a minute step at zero.
+    expect(scale([9, 9]).ticks).toEqual(['9 days', '12 days']);
+    expect(scale([0, 0]).ticks).toEqual(['0', '1 min']);
+  });
+
+  it('switches box plots between a linear and a log scale', () => {
+    const rows = [
+      { key: 'a', label: 'Alpha', count: 5, box: box(1, 2, 3, 4, 8) },
+      {
+        key: 'b',
+        label: 'Beta',
+        count: 1,
+        box: { low: 30_000, q1: 0.1 * DAY_MS, median: 0.5 * DAY_MS, q3: 0.5 * DAY_MS, high: 0.5 * DAY_MS },
+      },
+    ];
+    const { container } = render(<BoxPlotList format={humanDuration} logFloor={MINUTE_MS} rows={rows} />);
+    const ticks = () => [...container.querySelectorAll('.box-ticks span')].map((t) => t.textContent);
+    const alpha = () => screen.getByLabelText(/^Alpha:/);
+    const beta = () => screen.getByLabelText(/^Beta:/);
+    expect(screen.getByRole('button', { name: 'Linear' })).toHaveAttribute('aria-pressed', 'true');
+    expect(ticks()).toEqual(['0', '2 days', '4 days', '6 days', '8 days']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log' }));
+    expect(screen.getByRole('button', { name: 'Log' })).toHaveAttribute('aria-pressed', 'true');
+    // The floor is the left edge, labelled 0; then round durations at least a decade apart.
+    expect(ticks()).toEqual(['0', '10 min', '2 h', '1 day', '14 days']);
+    // Each position is its log distance from the floor, as a share of the whole scale.
+    const end = Math.log10((14 * DAY_MS) / MINUTE_MS);
+    const pos = (ms: number) => (Math.log10(ms / MINUTE_MS) / end) * 100;
+    const whisker = alpha().querySelector('.box-whisker') as HTMLElement;
+    expect(parseFloat(whisker.style.left)).toBeCloseTo(pos(DAY_MS));
+    expect(parseFloat(whisker.style.width)).toBeCloseTo(pos(8 * DAY_MS) - pos(DAY_MS));
+    const boxEl = alpha().querySelector('.box') as HTMLElement;
+    expect(parseFloat(boxEl.style.left)).toBeCloseTo(pos(2 * DAY_MS));
+    // Values below the floor are drawn at the floor.
+    expect((beta().querySelector('.box-whisker') as HTMLElement).style.left).toBe('0%');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Linear' }));
+    expect(ticks()).toEqual(['0', '2 days', '4 days', '6 days', '8 days']);
+    expect((alpha().querySelector('.box-whisker') as HTMLElement).style.left).toBe('12.5%');
+  });
+
+  it('picks log ticks at round durations at least a decade apart', () => {
+    expect(logTicks(MINUTE_MS, 8 * DAY_MS)).toEqual([MINUTE_MS, 10 * MINUTE_MS, 2 * HOUR_MS, DAY_MS, 14 * DAY_MS]);
+    // The tick before the end is dropped when it would sit too close to it.
+    expect(logTicks(MINUTE_MS, 40 * MINUTE_MS)).toEqual([MINUTE_MS, HOUR_MS]);
+    expect(logTicks(MINUTE_MS, 2 * MINUTE_MS)).toEqual([MINUTE_MS, 2 * MINUTE_MS]);
   });
 
   it('picks round steps', () => {
@@ -228,7 +292,7 @@ describe('chart parts', () => {
   });
 
   it('says when there is nothing to draw box plots from', () => {
-    render(<BoxPlotList unit="days" format={String} rows={[]} />);
+    render(<BoxPlotList format={String} rows={[]} logFloor={MINUTE_MS} />);
     expect(screen.getByText('No completed tasks yet.')).toBeInTheDocument();
   });
 

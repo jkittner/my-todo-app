@@ -64,27 +64,31 @@ export function formatDuration(ms: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
-export interface DurationUnit {
-  ms: number;
-  /** Axis caption, e.g. "hours". */
-  name: string;
-  /** Writes a value already in this unit, e.g. 2.5 → "2.5 h". */
-  format: (value: number) => string;
-}
+export const MINUTE_MS = 60_000;
+export const HOUR_MS = 3_600_000;
+export const MONTH_MS = (DAY_MS * 365.25) / 12;
+export const YEAR_MS = DAY_MS * 365.25;
 
-const round1 = (v: number) => Math.round(v * 10) / 10;
-const DURATION_UNITS: { upTo: number; unit: DurationUnit }[] = [
-  { upTo: 3_600_000, unit: { ms: 60_000, name: 'minutes', format: (v) => `${round1(v)} min` } },
-  { upTo: 2 * DAY_MS, unit: { ms: 3_600_000, name: 'hours', format: (v) => `${round1(v)} h` } },
-  {
-    upTo: Infinity,
-    unit: { ms: DAY_MS, name: 'days', format: (v) => `${round1(v)} ${round1(v) === 1 ? 'day' : 'days'}` },
-  },
+/** Minutes up to an hour, hours up to a day, days up to two months, months up to a year, then years. */
+const HUMAN_SCALES = [
+  { size: MINUTE_MS, until: 60 * MINUTE_MS, decimals: 0, one: 'min', many: 'min' },
+  { size: HOUR_MS, until: DAY_MS, decimals: 1, one: 'h', many: 'h' },
+  { size: DAY_MS, until: 60 * DAY_MS, decimals: 1, one: 'day', many: 'days' },
+  { size: MONTH_MS, until: YEAR_MS, decimals: 1, one: 'month', many: 'months' },
+  { size: YEAR_MS, until: Infinity, decimals: 1, one: 'year', many: 'years' },
 ];
 
-/** The unit that reads best for durations up to `maxMs`: minutes under an hour, hours up to two days, then days. */
-export function durationUnit(maxMs: number): DurationUnit {
-  return (DURATION_UNITS.find((u) => maxMs < u.upTo) as (typeof DURATION_UNITS)[number]).unit;
+/**
+ * A duration in the unit that fits its size: "45 min", "3.5 h", "2 days", "4.5 months", "1.2 years".
+ * Chart labels use it so a quick task reads as minutes and a long one as years.
+ */
+export function humanDuration(ms: number): string {
+  if (ms === 0) return '0';
+  if (ms < MINUTE_MS) return 'under 1 min';
+  const scale = HUMAN_SCALES.find((s) => ms < s.until) as (typeof HUMAN_SCALES)[number];
+  const factor = 10 ** scale.decimals;
+  const value = Math.round((ms / scale.size) * factor) / factor;
+  return `${value} ${value === 1 ? scale.one : scale.many}`;
 }
 
 const shortFmt = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
